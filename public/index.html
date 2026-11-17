@@ -702,6 +702,21 @@ const AI={chases:0,blinkCd:10,stare:0,stareCd:5,leap:0,sT:0,thT:3,hbT:0,s:'wande
 let stalkUnseen=0,stalkCooldown=18+Math.random()*18,stalkPending=false,stalkHideTimer=0,stalkWasSeen=false;
 const wallAmbush={phase:'idle',target:null,timer:0,jumpT:0,grace:0,cooldown:24+Math.random()*24};
 const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
+// Track a genuine escape through corridors: the monster must lose line of sight,
+// and the player must travel while making several clear direction changes.
+function trackEscapeRoute(T,dt,hasLineOfSight){
+ if(hasLineOfSight){T.escapeBlind=0;T.escapeTurns=0;T.escapeMove=0;T.escapeTurn=0;T.escapeTurnCd=0;T.escapePrevX=pl.x;T.escapePrevZ=pl.z;T.escapePrevYaw=pl.yaw;return false}
+ T.escapeBlind=(T.escapeBlind||0)+dt;
+ if(!Number.isFinite(T.escapePrevX)){T.escapePrevX=pl.x;T.escapePrevZ=pl.z;T.escapePrevYaw=pl.yaw}
+ T.escapeMove=(T.escapeMove||0)+Math.hypot(pl.x-T.escapePrevX,pl.z-T.escapePrevZ);
+ T.escapeTurn=(T.escapeTurn||0)+Math.abs(wrap(pl.yaw-T.escapePrevYaw));
+ T.escapeTurnCd=Math.max(0,(T.escapeTurnCd||0)-dt);
+ T.escapePrevX=pl.x;T.escapePrevZ=pl.z;T.escapePrevYaw=pl.yaw;
+ if(T.escapeMove>=2.2&&T.escapeTurn>=1.0&&T.escapeTurnCd<=0){
+  T.escapeTurns=(T.escapeTurns||0)+1;T.escapeMove=0;T.escapeTurn=0;T.escapeTurnCd=.75;
+ }
+ return T.escapeBlind>=2.2&&T.escapeTurns>=3;
+}
 function setS(s){if(s=='chase'&&AI.s!='chase'){AI.chases++;sting()}AI.s=s;AI.tg=null;AI.gl=null;AI.rp=0;AI.pause=0;AI.after=null;AI.pts=[];AI.fail=false;
  if(s=='chase'){AI.lostT=0;AI.flankCd=3+Math.random()*4;AI.flank=null;AI.flankT=0;AI.atk=0;AI.atkCd=0;AI.stare=0;AI.leap=0;AI.stareCd=20+Math.random()*20}}
 function pick(cx,cz,r0,r1){for(let t=0;t<14;t++){const a=Math.random()*6.283,d=r0+Math.random()*(r1-r0),x=cx+Math.cos(a)*d,z=cz+Math.sin(a)*d;if(isFree(x,z,MR+.15))return[x,z]}return null}
@@ -876,6 +891,7 @@ function findBehindSpot(minD,maxD){
 }
 function placeMonsterBehind(minD,maxD,state){
  if(!ready||dead||!monRoot)return false;
+ hideMonsterApparition();
  wallAmbush.phase='idle';wallAmbush.target=null;wallAmbush.timer=0;wallAmbush.jumpT=0;wallAmbush.grace=0;
  stalkPending=false;stalkHideTimer=0;stalkUnseen=0;stalkWasSeen=false;
  const spot=findBehindSpot(minD,maxD);if(!spot)return false;
@@ -990,12 +1006,77 @@ secretForm.addEventListener('submit',e=>{
  if(teleportToNearestChair()){closeSecretPanel();renderer.domElement.requestPointerLock();}
 });
 
+const MON_APP={root:null,state:'idle',x:0,z:0,yaw:0,ux:0,uz:0,peekX:0,peekZ:0,timer:0,nextAt:0,cooldownUntil:0};
+function hideMonsterApparition(){
+ MON_APP.state='idle';MON_APP.timer=0;if(MON_APP.root)MON_APP.root.visible=false;
+}
+function findMonsterApparitionSpot(){
+ const walls=colsRect(pl.x-18,pl.z-18,pl.x+18,pl.z+18),candidates=[];
+ for(const b of walls){
+  const cx=(b[0]+b[1])*.5,cz=(b[2]+b[3])*.5,dx=cx-pl.x,dz=cz-pl.z,d=Math.hypot(dx,dz)||1;
+  if(d<4.5||d>15.5)continue;
+  const ux=dx/d,uz=dz/d,tx=-uz,tz=ux;
+  const halfAlong=Math.abs(ux)*(b[1]-b[0])*.5+Math.abs(uz)*(b[3]-b[2])*.5;
+  const halfSide=Math.abs(tx)*(b[1]-b[0])*.5+Math.abs(tz)*(b[3]-b[2])*.5;
+  for(const edge of [-1,1]){
+   const side=edge*Math.max(0,halfSide-.16),x=cx+ux*(halfAlong+1.0)+tx*side,z=cz+uz*(halfAlong+1.0)+tz*side;
+   const dist=Math.hypot(x-pl.x,z-pl.z);if(dist<5||dist>17||!isFree(x,z,MR+.16))continue;
+   const center=los(pl.x,pl.z,x,z),a=los(pl.x,pl.z,x+tx*.58,z+tz*.58),c=los(pl.x,pl.z,x-tx*.58,z-tz*.58);
+   // The center remains behind the wall, while just one side of the model peeks around its edge.
+   if(!center&&a!==c)candidates.push({x,z,ux,uz,peekX:tx*(a?1:-1),peekZ:tz*(a?1:-1)});
+  }
+ }
+ if(!candidates.length)return null;
+ return candidates[Math.floor(Math.random()*candidates.length)];
+}
+function ensureMonsterApparition(){
+ if(MON_APP.root)return MON_APP.root;
+ const source=normalRoot||monRoot;if(!source||!THREE.SkeletonUtils)return null;
+ try{MON_APP.root=THREE.SkeletonUtils.clone(source);MON_APP.root.visible=false;scene.add(MON_APP.root);return MON_APP.root}
+ catch(e){console.warn('Monster apparition could not be cloned',e);return null}
+}
+function apparitionIsLookedAt(){
+ const dx=MON_APP.x+MON_APP.peekX*.38-pl.x,dz=MON_APP.z+MON_APP.peekZ*.38-pl.z,d=Math.hypot(dx,dz)||1;
+ const cp=Math.cos(pl.pitch),fx=-Math.sin(pl.yaw)*cp,fz=-Math.cos(pl.yaw)*cp;
+ return (dx*fx+dz*fz)/d>.91&&los(pl.x,pl.z,MON_APP.x+MON_APP.peekX*.38,MON_APP.z+MON_APP.peekZ*.38);
+}
+function monsterApparitionTick(dt){
+ if(chairMode||dead||AI.s!=='dormant'){hideMonsterApparition();return}
+ const root=ensureMonsterApparition();if(!root)return;
+ if(MON_APP.state==='idle'){
+  if(performance.now()<MON_APP.nextAt||performance.now()<MON_APP.cooldownUntil)return;
+  const spot=findMonsterApparitionSpot();
+  if(!spot){MON_APP.nextAt=performance.now()+7000;return}
+  MON_APP.x=spot.x;MON_APP.z=spot.z;MON_APP.ux=spot.ux;MON_APP.uz=spot.uz;MON_APP.peekX=spot.peekX;MON_APP.peekZ=spot.peekZ;
+  MON_APP.yaw=Math.atan2(pl.x-MON_APP.x,pl.z-MON_APP.z);MON_APP.timer=1.25+Math.random()*1.25;MON_APP.state='show';
+  root.position.set(MON_APP.x,0,MON_APP.z);root.rotation.set(0,MON_APP.yaw,0);root.visible=true;return;
+ }
+ if(MON_APP.state==='show'){
+  MON_APP.timer-=dt;
+  if(apparitionIsLookedAt()){MON_APP.state='retreat';MON_APP.timer=.13}
+  else if(MON_APP.timer<=0){hideMonsterApparition();MON_APP.cooldownUntil=performance.now()+30000+Math.random()*45000}
+ }
+ if(MON_APP.state==='retreat'){
+  MON_APP.timer-=dt;MON_APP.x+=MON_APP.ux*dt*5.5;
+  root.position.set(MON_APP.x,0,MON_APP.z);
+  if(MON_APP.timer<=0){hideMonsterApparition();MON_APP.cooldownUntil=performance.now()+30000+Math.random()*45000}
+ }
+}
 function fogSpawn(){
  if(!ready||dead||!monRoot)return false;
+ hideMonsterApparition();
  return placeMonsterBehind(15,19,'chase');
 }
-function goDormant(){setS('wander');AI.s='dormant';AI.dT=4+Math.random()*18;monRoot.visible=false} // long-ish or short then spawn behind you
-function ambush(){if(!placeMonsterBehind(10,16,'chase')){if(!placeMonsterBehind(14,20,'chase'))AI.dT=1.5}}
+function goDormant(minSeconds,maxSeconds){
+ hideMonsterApparition();setS('wander');AI.s='dormant';
+ const lo=Number.isFinite(minSeconds)?minSeconds:4,hi=Number.isFinite(maxSeconds)?Math.max(lo,maxSeconds):22;
+ AI.dT=lo+Math.random()*(hi-lo);if(monRoot)monRoot.visible=false;
+ MON_APP.nextAt=performance.now()+(8+Math.random()*18)*1000;
+} // the real monster stays away for a variable period; a rare wall-side apparition may occur meanwhile
+function ambush(){
+ hideMonsterApparition();
+ if(!placeMonsterBehind(10,16,'chase')){if(!placeMonsterBehind(14,20,'chase'))AI.dT=1.5}
+}
 let firstMonsterSpawn=true;
 function spawnMon(){
  // First spawn: 50% blackout (monster may appear when lights return), 50% just appear behind you
@@ -1016,6 +1097,7 @@ function spawnMon(){
 function finishDeath(){
  if(dead)return;
  dead=true;deadT=2;
+ hideMonsterApparition();
  if(monRoot)monRoot.visible=false;
  if(typeof partyHide==='function')partyHide();
  if(typeof bodyHide==='function')bodyHide();
@@ -1031,7 +1113,7 @@ function monsterStep(dt){
  if(dead){deadT+=dt;if(deadT>1.8&&dd.style.display!='flex'){dd.style.display='flex';document.exitPointerLock()}return}
  if(!ready||!document.pointerLockElement)return;
  if(!mon.on){dreadFx(dt,false,99);if(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)playT+=dt;if(playT>TRIG)spawnMon();return}
- if(AI.s=='dormant'){dreadFx(dt,false,99);if(chairMode||keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)AI.dT-=dt;if(AI.dT<=0)ambush();return}
+ if(AI.s=='dormant'){dreadFx(dt,false,99);monsterApparitionTick(dt);if(chairMode||keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)AI.dT-=dt;if(AI.dT<=0){hideMonsterApparition();ambush()}return}
 
  // During blackout the monster freezes completely – no movement, no kill
  // Exception: chair sequence keeps the chair monster visible (still frozen) during its short dark phase
@@ -1065,6 +1147,13 @@ function monsterStep(dt){
  // Darkness makes this much more likely, but it is never guaranteed.
  const playerViewDot=((mon.x-pl.x)*Math.sin(pl.yaw)-(mon.z-pl.z)*Math.cos(pl.yaw))/(d||1);
  const playerHasSight=monRoot.visible&&d<36&&playerViewDot>.35&&los(pl.x,pl.z,mon.x,mon.z);
+ const monsterHasLineOfSight=los(mon.x,mon.z,pl.x,pl.z);
+ const escapedByTurns=trackEscapeRoute(AI,dt,monsterHasLineOfSight);
+ if(AI.s==='chase'&&!playerHasSight&&(d>46||(escapedByTurns&&d>8))){
+  if(chairMode)despawnChair();
+  else goDormant(6,58);
+  return;
+ }
  if(!chairMode&&chairPhase==='idle'&&!stalkPending){
   stalkCooldown=Math.max(0,stalkCooldown-dt);
   if(playerHasSight){stalkWasSeen=true;stalkUnseen=0}
@@ -1110,6 +1199,7 @@ function monsterStep(dt){
  if(AI.dread>.3){AI.hbT-=dt;if(AI.hbT<=0){AI.hbT=1.3-AI.dread*.7;heart(AI.dread)}}
 }
 dd.onclick=()=>{
+ hideMonsterApparition();MON_APP.cooldownUntil=0;MON_APP.nextAt=0;
  dead=false;dd.style.display='none';fl.style.opacity=0;closeSecretPanel();wallAmbush.phase='idle';wallAmbush.target=null;wallAmbush.timer=0;wallAmbush.jumpT=0;wallAmbush.grace=0;wallAmbush.cooldown=24+Math.random()*24;mon.on=false;stalkUnseen=0;stalkCooldown=18+Math.random()*18;stalkPending=false;stalkHideTimer=0;stalkWasSeen=false;if(monRoot)monRoot.visible=false;if(normalRoot)normalRoot.visible=false;if(chairRoot)chairRoot.visible=false;if(typeof bodyHide==='function')bodyHide();monRoot=normalRoot;chairMode=false;chairEncountered=false;chairPhase='idle';chairPhaseT=0;chairMonsterSpawned=false;if(chairMesh){scene.remove(chairMesh);chairMesh=null}chairPosition=null;chairSpawned=false;exploreDistance=0;exploreAnchor=[33,33];LK.red=0;setS('wander');dreadFx(10,false,99);
  const deathX=pl.x,deathZ=pl.z;
  survivalSeconds=0;gameStarted=true;survivedEl.textContent='Time survived: 00:00';
@@ -1122,7 +1212,7 @@ renderer.domElement.addEventListener('click',()=>{if(!dead)renderer.domElement.r
 // Balloons are placed per chunk (deterministic for the world seed), tied to the floor with a string.
 // Looking at one for 3+ seconds pops it into confetti and summons the partygoer.
 const BALLOON_CHANCE=.08;   // reduced: chance that a non-anchor 64x64 chunk holds a balloon
-const BALLOON_LOOK=0.6;     // seconds of looking required before a balloon pops
+const BALLOON_LOOK=0.3;     // half the previous gaze time; no distance limit
 const PARTY_SPEED=7.0;      // matched to body monster; still under player sprint 7.5
 const PARTY={balloons:new Map(),done:new Set(),popped:new Set(),state:'idle',root:null,
  x:0,z:0,yaw:0,spd:0,turn:0,anim:0,path:[],pi:1,gl:null,rp:0,lurkT:0,seenT:0,lostT:0,farT:0,
@@ -1299,13 +1389,14 @@ function partyMonsterTick(dt,dark){
  }
  // ---- chase ----
  if(d<1.2){caught(PARTY.root);return}
- const seen=d<34&&los(P.x,P.z,pl.x,pl.z);
+ const clearRoute=los(P.x,P.z,pl.x,pl.z),seen=d<34&&clearRoute;
+ const escapedByTurns=trackEscapeRoute(P,dt,clearRoute);
  if(seen){P.lostT=0;P.last=[pl.x,pl.z]}else P.lostT+=dt;
  P.farT=(d>26&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
- // escaped: it lost you for a while / you got far away, and you can't see it vanish
- if((P.farT>2.5||P.lostT>6||d>52)&&!partyView(P.x,P.z,1.2)){
-  if(Math.random()<0.5){partyHide();} // permanent until next balloon
-  else {P.root.visible=false;P.state='pending';P.pendT=2.0+Math.random()*3.0;P.pendTry=0;}
+ // Escape by distance or by losing it through several genuine corridor turns.
+ if((P.farT>2.5||P.lostT>6||d>52||(escapedByTurns&&d>8))&&!partyView(P.x,P.z,1.2)){
+  if(Math.random()<0.5){partyHide();} // permanent until another balloon is triggered
+  else {P.root.visible=false;P.state='pending';P.pendT=5+Math.random()*25;P.pendTry=0;}
   return}
  P.facT-=dt;if(P.facT<=0){P.facT=1+Math.random()*1.8;P.facG=.88+Math.random()*.18}
  P.fac+=(P.facG-P.fac)*Math.min(1,dt*2);P.lungeCd-=dt;
@@ -1403,7 +1494,13 @@ function findBodySpot(){
  }
  return findBehindSpot(8,18);
 }
-function startBody(){if(BODY.state==='idle'){BODY.state='pending';BODY.pendMode='disguise';BODY.pendT=.25;BODY.pendTry=0;MP.bodyNetOwned=true;MP.bodySyncAt=0;if(typeof mpBodySync==='function')mpBodySync()}}
+const BODY_ENCOUNTER_CHANCE=.30;
+function startBody(){
+ if(BODY.state!=='idle'||Math.random()>=BODY_ENCOUNTER_CHANCE)return false;
+ BODY.state='pending';BODY.pendMode='disguise';BODY.pendT=.25;BODY.pendTry=0;
+ BODY.escapeBlind=0;BODY.escapeTurns=0;BODY.escapeMove=0;BODY.escapeTurn=0;
+ MP.bodyNetOwned=true;MP.bodySyncAt=0;if(typeof mpBodySync==='function')mpBodySync();return true;
+}
 
 function bodySteer(dt,tx,tz,spd,tr){
  const P=BODY;P.rp-=dt;
@@ -1448,14 +1545,15 @@ function bodyMonsterTick(dt,dark){
   return;
  }
  if(d<1.25){caught(P.root);return}
- const seen=d<34&&los(P.x,P.z,pl.x,pl.z);
+ const clearRoute=los(P.x,P.z,pl.x,pl.z),seen=d<34&&clearRoute;
+ const escapedByTurns=trackEscapeRoute(P,dt,clearRoute);
  if(seen){P.lostT=0;P.last=[pl.x,pl.z]}else P.lostT+=dt;
  P.farT=(d>28&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
- // escape handling 50/50 permanent-ish or reappear
- if((P.farT>2.8||P.lostT>5.5||d>50)&&!partyView(P.x,P.z,1.2)){
+ // Escape by distance or by leaving it behind several corridor turns.
+ if((P.farT>2.8||P.lostT>5.5||d>50||(escapedByTurns&&d>8))&&!partyView(P.x,P.z,1.2)){
   if(Math.random()<0.5){bodyHide();} // 50%: permanently despawn until another body is triggered
-  else { // 50%: disappear, then reappear behind the player already transformed and attacking
-   P.root.visible=false;disgHide();P.state='pending';P.pendMode='ambush';P.pendT=2.2+Math.random()*2.8;P.pendTry=0;
+  else { // 50%: disappear and return behind the player after a longer random delay
+   P.root.visible=false;disgHide();P.state='pending';P.pendMode='ambush';P.pendT=4+Math.random()*24;P.pendTry=0;
   }
   return;
  }
@@ -1597,7 +1695,9 @@ function torchPickup(){
  if(!TH.has){TH.has=true;TH.on=false;TH.raise=0;TH.bat=1;TH.lyaw=pl.yaw;TH.lpit=pl.pitch;toast('You found a torch  —  press SPACE to switch it on / off')}
  else{TH.bat=1;toast('Another torch  —  battery restored')}
  if(A_()){nzb(AB.mg,.35,1200,.6,.25,0,'highpass');tn(AB.mg,300,520,.15,.12,'triangle')}
- // A natural corpse always triggers the body monster encounter.
+ // A natural corpse gets exactly one 30% Skin Stealer encounter roll.
+ // hazTick marks the body as taken before calling this, so walking over it again
+ // never grants another torch/battery or another encounter roll.
  if(typeof startBody==='function'){startBody()}
 }
 addEventListener('keydown',e=>{
@@ -1725,8 +1825,9 @@ function mpRemoteBodyTick(dt){
 function mpRememberPlayer(d){
  if(!d||d.id==null||d.id===MP.id)return;
  let p=MP.peers.get(d.id);
- if(!p){p={av:null,x:+d.x||0,z:+d.z||0,yaw:+d.y||0,tx:+d.x||0,tz:+d.z||0,ty:+d.y||0,m:0,s:0,dd:0,seen:0,stepT:0,mode:''};MP.peers.set(d.id,p)}
- p.tx=+d.x||0;p.tz=+d.z||0;p.ty=+d.y||0;p.m=d.m?1:0;p.s=d.s?1:0;p.dd=d.d?1:0;p.seen=performance.now();
+ if(!p){const initialDead=d.d?1:0;p={av:null,x:+d.x||0,z:+d.z||0,yaw:+d.y||0,tx:+d.x||0,tz:+d.z||0,ty:+d.y||0,m:0,s:0,dd:initialDead,corpseEpoch:initialDead?1:0,seen:0,stepT:0,mode:''};MP.peers.set(d.id,p)}
+ const nextDead=d.d?1:0;if(!p.dd&&nextDead)p.corpseEpoch=(p.corpseEpoch||0)+1;
+ p.tx=+d.x||0;p.tz=+d.z||0;p.ty=+d.y||0;p.m=d.m?1:0;p.s=d.s?1:0;p.dd=nextDead;p.seen=performance.now();
 }
 function mpSendPendingSpawn(){
  if(!MP.spawnRequest||!MP.ws||MP.ws.readyState!==1||!MP.initialized)return;
@@ -1805,17 +1906,15 @@ function mpTick(dt){
    p.av.root.scale.set(1,1,1);
    avAnim(p.av,dt,p.m,p.s);
   }
-  // Walking over a player corpse always triggers the existing Skin Stealer.
-  // Trigger once per corpse for this client; the server relays the event so
-  // other clients also start the encounter rather than relying on chance.
-  if(!dead&&!p.dd&&false){} // keep live-player path explicit
+  // Each player corpse can be checked only once per death. A later death by
+  // the same player receives a new epoch and is treated as a new corpse.
   if(!dead&&p.dd&&gameStarted&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.65){
    if(!MP.corpseTriggered)MP.corpseTriggered=new Set();
-   const corpseKey=String(id);
+   const corpseKey=String(id)+':'+String(p.corpseEpoch||1);
    if(!MP.corpseTriggered.has(corpseKey)){
     MP.corpseTriggered.add(corpseKey);
-    if(typeof startBody==='function')startBody();
-    if(MP.ws&&MP.ws.readyState===1)MP.ws.send(JSON.stringify({t:'e',event:'corpse-stepped',x:p.x,z:p.z}));
+    const triggered=typeof startBody==='function'&&startBody();
+    if(triggered&&MP.ws&&MP.ws.readyState===1)MP.ws.send(JSON.stringify({t:'e',event:'corpse-stepped',x:p.x,z:p.z}));
    }
   }
   if(p.m&&A_()&&Math.hypot(pl.x-p.x,pl.z-p.z)<45){p.stepT-=dt;if(p.stepT<=0){p.stepT=p.s?.34:.52;playerStepSnd(p.x,p.z,!!p.s)}}}
