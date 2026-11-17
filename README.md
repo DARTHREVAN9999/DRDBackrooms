@@ -31,6 +31,17 @@ The server binds to `0.0.0.0` and uses Render's `PORT` environment variable. `/h
 - When no other living player is online, the game's normal solo spawn is used.
 - When the last player disconnects, the server chooses a fresh world seed for the next session.
 
+
+## Corpse / Skin Stealer encounter
+
+- Crossing a natural fallen hazmat body or another player's corpse triggers the Skin Stealer encounter.
+- The creature first appears using the same hazmat player avatar model and follows behind the player for about 4–5 seconds.
+- It then changes to its monster model and begins chasing.
+- If the player escapes, the creature has a 50% chance to despawn until another corpse encounter, or a 50% chance to disappear and respawn behind the player already attacking.
+- Balloon and natural-body chunk spawn chances have been reduced slightly; chair placement now requires more exploration and has a small additional chance check.
+- One client owns each active Skin Stealer encounter and streams its position, facing, movement, disguise/monster form, and hidden/active state through the server. Other clients render that same shared creature instead of independently spawning their own copy.
+- Late joiners receive the current active encounter state. The server prevents two clients from owning separate Skin Stealer encounters at the same time.
+
 ## Notes
 
 The game uses Three.js r128 and its matching GLTF loader utilities from their public CDNs. The player avatar is served from `public/hazmat.glb`. The monsters and map models embedded in `public/index.html` remain part of the complete game file.

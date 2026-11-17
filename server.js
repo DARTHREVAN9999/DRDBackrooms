@@ -16,6 +16,7 @@ const wss = new WebSocketServer({ server, maxPayload: 2048 });
 const peers = new Map();
 let nextId = 1;
 let worldSeed = makeSeed();
+let sharedBody = null;
 
 function makeSeed() {
   return Math.floor(Math.random() * 0x7fffffff);
@@ -63,7 +64,7 @@ wss.on('connection', (ws) => {
   peers.set(id, peer);
 
   // Send the shared maze seed and the live players already in the session.
-  send(ws, { t: 'i', id, seed: worldSeed, players: playerSnapshot(id) });
+  send(ws, { t: 'i', id, seed: worldSeed, players: playerSnapshot(id), body: sharedBody && sharedBody.active ? sharedBody : null });
 
   ws.on('message', (message) => {
     let data;
@@ -91,8 +92,39 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Relay gameplay events (for example, a player stepping on a corpse)
-    // to every connected client. Keep payloads small and validate coordinates.
+    // A single client owns each Skin Stealer encounter. The server relays its
+    // authoritative snapshots to everyone else and supplies the latest state
+    // to players who join mid-encounter.
+    if (data.t === 'b') {
+      const active = data.active ? 1 : 0;
+      if (active) {
+        if (sharedBody && sharedBody.active && sharedBody.from !== id) {
+          send(ws, { t: 'bx', denied: 1 });
+          return;
+        }
+        const allowedStates = new Set(['pending', 'disguise', 'lurk', 'chase']);
+        sharedBody = {
+          t: 'b', active: 1, from: id,
+          state: allowedStates.has(data.state) ? data.state : 'pending',
+          x: cleanNumber(data.x), z: cleanNumber(data.z), yaw: cleanNumber(data.yaw),
+          spd: Math.max(0, Math.min(12, cleanNumber(data.spd))),
+          rx: cleanNumber(data.rx), rz: cleanNumber(data.rz),
+          hidden: data.hidden ? 1 : 0, seen: Date.now()
+        };
+        for (const [otherId, other] of peers) {
+          if (otherId !== id) send(other.ws, sharedBody);
+        }
+      } else if (sharedBody && sharedBody.active && sharedBody.from === id) {
+        const ended = { t: 'b', active: 0, from: id };
+        sharedBody = null;
+        for (const [otherId, other] of peers) {
+          if (otherId !== id) send(other.ws, ended);
+        }
+      }
+      return;
+    }
+
+    // Relay gameplay events (for example, a player stepping on a corpse).
     if (data.t === 'e' && typeof data.event === 'string') {
       const event = {
         t: 'e', event: data.event.slice(0, 32), from: id,
@@ -123,6 +155,11 @@ wss.on('connection', (ws) => {
     peers.delete(id);
     const update = { t: 'l', id };
     for (const other of peers.values()) send(other.ws, update);
+    if (sharedBody && sharedBody.from === id) {
+      sharedBody = null;
+      const ended = { t: 'b', active: 0, from: id };
+      for (const other of peers.values()) send(other.ws, ended);
+    }
     if (peers.size === 0) worldSeed = makeSeed();
   });
 

@@ -443,7 +443,7 @@ const sbf=document.getElementById("sbf"),sbw=document.getElementById("sb");
 // Multiplayer state must exist before the initial world seed is read below.
 // Previously this const was declared at the very bottom of the file, causing
 // a temporal-dead-zone ReferenceError and stopping the whole game at startup.
-const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false,corpseTriggered:new Set()};
+const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false,corpseTriggered:new Set(),bodyNetOwned:false,bodySyncAt:0,remoteBody:null,remoteBodyRoot:null,remoteBodyAvatar:null};
 window._worldSeed = (MP.seed!=null?MP.seed:(Math.random()*0x7fffffff)|0);
 const pl={st:1,exh:false,sprint:false,x:33,z:33,yaw:0,pitch:0,phase:0,amp:0};
 function pickRandomSpawn(){
@@ -962,7 +962,7 @@ function chairExploreTick(dt){
  if(chairEncountered||chairPhase!=='idle'||!document.pointerLockElement)return;
  if(!chairSpawned){
   const moved=Math.hypot(pl.x-exploreAnchor[0],pl.z-exploreAnchor[1]);exploreAnchor=[pl.x,pl.z];exploreDistance+=moved;
-  if(exploreDistance>22){exploreDistance=0;{
+  if(exploreDistance>27){exploreDistance=0;if(Math.random()<.88){
    for(let k=0;k<25;k++){const a=Math.random()*Math.PI*2,d=17+Math.random()*28,x=pl.x+Math.sin(a)*d,z=pl.z+Math.cos(a)*d;if(isFree(x,z,1.2)){createChairAt(x,z);break}}
   }}
  }
@@ -1137,7 +1137,7 @@ renderer.domElement.addEventListener('click',()=>{if(!dead)renderer.domElement.r
 // ===== RED BALLOON + PARTYGOER MONSTER =====
 // Balloons are placed per chunk (deterministic for the world seed), tied to the floor with a string.
 // Looking at one for 3+ seconds pops it into confetti and summons the partygoer.
-const BALLOON_CHANCE=.14;   // chance that any given 64x64 chunk holds a balloon (lower = rarer)
+const BALLOON_CHANCE=.12;   // slightly less common: chance that a 64x64 chunk holds a balloon
 const BALLOON_LOOK=0.6;     // seconds you must stare at a balloon to pop it (1/5 of original)
 const PARTY_SPEED=7.0;      // matched to body monster; still under player sprint 7.5
 const PARTY={balloons:new Map(),done:new Set(),popped:new Set(),state:'idle',root:null,
@@ -1369,17 +1369,17 @@ function despawnChair(){
 }
 
 
-// ===== BODY MONSTER (spawns 50% on torch pickup from hazmat body) =====
+// ===== BODY MONSTER (guaranteed encounter when a hazmat/player corpse is crossed) =====
 const BODY_SPEED=7.0; // same as party; under player sprint 7.5
 const BODY={state:'idle',root:null,x:0,z:0,yaw:0,spd:0,turn:0,anim:0,path:[],pi:1,gl:null,rp:0,
  lurkT:0,seenT:0,lostT:0,farT:0,last:[0,0],pdir:[0,1],pp:[0,0],ppAcc:0,lunge:0,lungeCd:1.2,
- fac:1,facG:1,facT:0,stepT:1,d:99,pendT:0,pendTry:0,shake:0};
+ fac:1,facG:1,facT:0,stepT:1,d:99,pendT:0,pendTry:0,pendMode:'disguise',shake:0};
 function bodyFallback(){
  if(BODY.root)return;
  const g=new THREE.Group(),m=new THREE.MeshBasicMaterial({color:0x111111});
  const bx=(w,h,d,x,y,z)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);g.add(o)};
  bx(.95,1.7,.55,0,1.25,0);bx(.55,.6,.5,0,2.25,0);bx(.24,1.4,.24,-.65,1.3,0);bx(.24,1.4,.24,.65,1.3,0);
- g.rotation.order='YXZ';g.visible=false;scene.add(g);BODY.root=g;
+ g.rotation.order='YXZ';g.visible=false;scene.add(g);BODY.root=g;if(typeof mpCreateRemoteBodyRoot==='function')mpCreateRemoteBodyRoot();
 }
 // Use the Skin Stealer GLB (mdlBody) scaled tall; fallback to boxes
 parseEmbeddedModel('mdlBody',gl=>{
@@ -1396,12 +1396,12 @@ parseEmbeddedModel('mdlBody',gl=>{
     m.needsUpdate=true;
    }
   });
-  BODY.root.visible=false;
+  BODY.root.visible=false;if(typeof mpCreateRemoteBodyRoot==='function')mpCreateRemoteBodyRoot();
  }catch(e){console.error('Body monster model failed',e);bodyFallback()}
 },e=>{console.error('Body monster model failed',e);bodyFallback()});
 setTimeout(()=>{if(!BODY.root)bodyFallback()},10000);
 
-function bodyHide(){disgHide();BODY.state='idle';BODY.spd=0;BODY.d=99;BODY.path=[];BODY.gl=null;if(BODY.root)BODY.root.visible=false}
+function bodyHide(){disgHide();BODY.state='idle';BODY.pendMode='';BODY.spd=0;BODY.d=99;BODY.path=[];BODY.gl=null;if(BODY.root)BODY.root.visible=false;if(MP.bodyNetOwned&&typeof mpBodySync==='function')mpBodySync(true)}
 function bodyReset(){bodyHide()}
 const bodyDist=()=>(BODY.state==='chase'||BODY.state==='lurk')?BODY.d:99;
 
@@ -1419,7 +1419,7 @@ function findBodySpot(){
  }
  return findBehindSpot(8,18);
 }
-function startBody(){if(BODY.state==='idle'){BODY.state='pending';BODY.pendT=.25;BODY.pendTry=0}}
+function startBody(){if(BODY.state==='idle'){BODY.state='pending';BODY.pendMode='disguise';BODY.pendT=.25;BODY.pendTry=0;MP.bodyNetOwned=true;MP.bodySyncAt=0;if(typeof mpBodySync==='function')mpBodySync()}}
 
 function bodySteer(dt,tx,tz,spd,tr){
  const P=BODY;P.rp-=dt;
@@ -1434,15 +1434,21 @@ function bodySteer(dt,tx,tz,spd,tr){
 }
 function bodyMonsterTick(dt,dark){
  const P=BODY;if(P.state==='idle')return;
- if(dark){if(P.root)P.root.visible=false;return}
+ if(dark){if(P.root)P.root.visible=false;disgHide();return}
  if(P.state==='pending'){
   P.pendT-=dt;if(P.pendT>0||!P.root)return;
-  const sp=findBodySpot();
+  const ambush=P.pendMode==='ambush';
+  // The escape/reappear outcome deliberately uses a rear-half spawn and skips the disguise.
+  const sp=ambush?findBehindSpot(8,14):findBodySpot();
   if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(pl.x-P.x,pl.z-P.z);P.spd=0;P.turn=0;
-   P.state='disguise';P.disT=11+Math.random()*7;P.seenT=0;P.stepT=0;P.root.visible=false;disgShow()}
+   P.seenT=0;P.lostT=0;P.farT=0;P.stepT=0;P.last=[pl.x,pl.z];P.pendMode='';
+   if(ambush){disgHide();P.state='chase';P.root.visible=true;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.lunge=0;P.lungeCd=.35}
+   else{P.state='disguise';P.disT=3.8+Math.random()*1.4;P.root.visible=false;disgShow()}}
   else{P.pendTry++;P.pendT=.35;if(P.pendTry>10)bodyHide()}
   return;
  }
+ // While disguised, render and animate the hazmat player avatar, not the monster skin.
+ if(P.state==='disguise'){if(P.root)P.root.visible=false;disgTick(dt);return}
  const d=Math.hypot(pl.x-P.x,pl.z-P.z);P.d=d;P.root.visible=true;
  P.ppAcc+=dt;
  if(P.ppAcc>=.1){const vx=(pl.x-P.pp[0])/P.ppAcc,vz=(pl.z-P.pp[1])/P.ppAcc,vs=Math.hypot(vx,vz);P.pp=[pl.x,pl.z];if(vs>.5)P.pdir=[vx/vs,vz/vs];P.ppAcc=0}
@@ -1463,9 +1469,9 @@ function bodyMonsterTick(dt,dark){
  P.farT=(d>28&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
  // escape handling 50/50 permanent-ish or reappear
  if((P.farT>2.8||P.lostT>5.5||d>50)&&!partyView(P.x,P.z,1.2)){
-  if(Math.random()<0.5){bodyHide();} // permanent until next torch
-  else { // short hide then reappear behind
-   P.root.visible=false;P.state='pending';P.pendT=2.2+Math.random()*2.8;P.pendTry=0;
+  if(Math.random()<0.5){bodyHide();} // 50%: permanently despawn until another body is triggered
+  else { // 50%: disappear, then reappear behind the player already transformed and attacking
+   P.root.visible=false;disgHide();P.state='pending';P.pendMode='ambush';P.pendT=2.2+Math.random()*2.8;P.pendTry=0;
   }
   return;
  }
@@ -1492,14 +1498,15 @@ function bodyMonsterTick(dt,dark){
 }
 function bodyTick(dt,active){
  if(dead){bodyHide();return}
- if(!gameStarted||!active)return;
+ if(!gameStarted||!active){if(MP.bodyNetOwned)mpBodySync();return}
  const dark=LK.bo||chairPhase!=='idle';
  bodyMonsterTick(dt,dark);
+ mpBodySync();
 }
 
 
 // ===== FALLEN HAZMAT BODIES + TORCH =====
-const HZ_CHANCE=.14;        // chance that a 64x64 chunk holds a body (lower = rarer)
+const HZ_CHANCE=.12;        // slightly less common: chance that a 64x64 chunk holds a fallen body
 const TORCH_DRAIN=1/55;     // battery used per second while the torch is on (~55 s of light per charge)
 const TORCH_SLOW=.68;       // monster speed multiplier while the beam is on them
 const HZ={bodies:new Map(),done:new Set(),taken:new Set(),tpl:null,blood:[]};
@@ -1606,8 +1613,8 @@ function torchPickup(){
  if(!TH.has){TH.has=true;TH.on=false;TH.raise=0;TH.bat=1;TH.lyaw=pl.yaw;TH.lpit=pl.pitch;toast('You found a torch  —  press SPACE to switch it on / off')}
  else{TH.bat=1;toast('Another torch  —  battery restored')}
  if(A_()){nzb(AB.mg,.35,1200,.6,.25,0,'highpass');tn(AB.mg,300,520,.15,.12,'triangle')}
- // 50% chance a body monster spawns behind you and starts hunting
- if(typeof startBody==='function'){startBody();toast('Something is behind you...')}
+ // A natural corpse always triggers the body monster encounter.
+ if(typeof startBody==='function'){startBody();toast('Something is following you...')}
 }
 addEventListener('keydown',e=>{
  if(e.code!=='Space'||secretPanelOpen)return; // leave Space alone while typing in the code box
@@ -1687,6 +1694,50 @@ function torchFrame(dt,active){
 requestAnimationFrame(loop);
 
 // ===== MULTIPLAYER + HAZMAT AVATARS + DISGUISED BODY MONSTER =====
+// One client simulates the Skin Stealer encounter; the server relays snapshots
+// so every other player renders that exact same creature and transformation.
+function mpBodySync(force){
+ if(!MP.bodyNetOwned||!MP.ws||MP.ws.readyState!==1)return;
+ const active=BODY.state!=='idle';
+ const now=performance.now();
+ if(active&&!force&&now-MP.bodySyncAt<80)return;
+ MP.bodySyncAt=now;
+ const d={t:'b',active:active?1:0,state:active?BODY.state:'idle',
+  x:active?(Number.isFinite(BODY.x)?BODY.x:pl.x):0,z:active?(Number.isFinite(BODY.z)?BODY.z:pl.z):0,
+  yaw:active?(Number.isFinite(BODY.yaw)?BODY.yaw:pl.yaw):0,spd:active?(Number(BODY.spd)||0):0,
+  rx:active&&BODY.root?BODY.root.rotation.x:0,rz:active&&BODY.root?BODY.root.rotation.z:0,
+  hidden:active&&((LK&&LK.bo)||chairPhase!=='idle'||BODY.state==='pending')?1:0};
+ try{MP.ws.send(JSON.stringify(d))}catch(_e){}
+ if(!active){MP.bodyNetOwned=false;MP.bodySyncAt=0}
+}
+function mpSetRemoteBody(d){
+ if(!d||d.from===MP.id)return;
+ if(!d.active){MP.remoteBody=null;if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;return}
+ const state=['pending','disguise','lurk','chase'].includes(d.state)?d.state:'pending';
+ if(!MP.remoteBody||MP.remoteBody.from!==d.from||MP.remoteBody.state!==state){
+  MP.remoteBody={from:d.from,state,x:+d.x||0,z:+d.z||0,yaw:+d.yaw||0,tx:+d.x||0,tz:+d.z||0,tyaw:+d.yaw||0,spd:+d.spd||0,rx:+d.rx||0,rz:+d.rz||0,hidden:!!d.hidden,seen:performance.now(),snap:true};
+ }else{MP.remoteBody.tx=Number.isFinite(+d.x)?+d.x:MP.remoteBody.tx;MP.remoteBody.tz=Number.isFinite(+d.z)?+d.z:MP.remoteBody.tz;MP.remoteBody.tyaw=Number.isFinite(+d.yaw)?+d.yaw:MP.remoteBody.tyaw;MP.remoteBody.spd=+d.spd||0;MP.remoteBody.rx=+d.rx||0;MP.remoteBody.rz=+d.rz||0;MP.remoteBody.hidden=!!d.hidden;MP.remoteBody.seen=performance.now()}
+}
+function mpCreateRemoteBodyRoot(){
+ if(MP.remoteBodyRoot||!BODY.root||!THREE.SkeletonUtils)return;
+ try{MP.remoteBodyRoot=THREE.SkeletonUtils.clone(BODY.root);MP.remoteBodyRoot.visible=false;scene.add(MP.remoteBodyRoot)}catch(e){console.warn('Could not clone shared body monster model',e)}
+}
+function mpRemoteBodyTick(dt){
+ const d=MP.remoteBody;if(!d)return;
+ if(!gameStarted){if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;return}
+ if(performance.now()-d.seen>3500){if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;return}
+ const k=Math.min(1,dt*14);d.x+=(d.tx-d.x)*k;d.z+=(d.tz-d.z)*k;d.yaw+=wrap(d.tyaw-d.yaw)*k;
+ if(d.hidden||d.state==='pending'){if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;return}
+ if(d.state==='disguise'){
+  if(!MP.remoteBodyAvatar)MP.remoteBodyAvatar=mkAv();
+  if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;
+  if(MP.remoteBodyAvatar){const av=MP.remoteBodyAvatar;av.root.visible=true;av.root.position.set(d.x,0,d.z);av.root.rotation.set(0,d.yaw+Math.PI,0);av.root.scale.set(1,1,1);avAnim(av,dt,d.spd>.6,false)}
+ }else{
+  if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;
+  if(!MP.remoteBodyRoot)mpCreateRemoteBodyRoot();
+  if(MP.remoteBodyRoot){const r=MP.remoteBodyRoot;r.visible=true;r.position.set(d.x,0,d.z);r.rotation.set(d.rx,d.yaw,d.rz)}
+ }
+}
 function mpRememberPlayer(d){
  if(!d||d.id==null||d.id===MP.id)return;
  let p=MP.peers.get(d.id);
@@ -1722,12 +1773,14 @@ function mpFindSafeSpawn(targetX,targetZ){
    MP.id=d.id;MP.seed=d.seed;MP.initialized=true;
    window._worldSeed=MP.seed;
    if(Array.isArray(d.players))d.players.forEach(mpRememberPlayer);
+   if(d.body&&d.body.active)mpSetRemoteBody(d.body);
    if(gameStarted){pickRandomSpawn();mpRequestSpawn('start',pl.x,pl.z)}else mpSendPendingSpawn();
   }else if(d.t==='s')mpRememberPlayer(d);
   else if(d.t==='e'&&d.event==='corpse-stepped'){
-   // Guaranteed encounter: no random roll when a corpse is crossed.
-   if(typeof startBody==='function'&&!dead)startBody();
-  }
+   // The player who triggered the corpse owns the encounter and streams its
+   // monster state. Do not create a separate local monster on every client.
+  }else if(d.t==='b'){mpSetRemoteBody(d)}
+  else if(d.t==='bx'&&d.denied){bodyHide();toast('Another player is already being hunted');}
   else if(d.t==='p'){
    if(d.near){const pos=mpFindSafeSpawn(+d.x||0,+d.z||0);pl.x=pos.x;pl.z=pos.z;pl.yaw=Math.atan2((+d.x||0)-pl.x,(+d.z||0)-pl.z)}
    else{pl.x=Number.isFinite(+d.x)?+d.x:pl.x;pl.z=Number.isFinite(+d.z)?+d.z:pl.z;pl.yaw=Number.isFinite(+d.y)?+d.y:pl.yaw}
@@ -1782,19 +1835,29 @@ function mpTick(dt){
    }
   }
   if(p.m&&A_()&&Math.hypot(pl.x-p.x,pl.z-p.z)<45){p.stepT-=dt;if(p.stepT<=0){p.stepT=p.s?.34:.52;playerStepSnd(p.x,p.z,!!p.s)}}}
+ mpRemoteBodyTick(dt);
 }
 // looted-body monster: looks like another player first, walks after you, then reveals itself
 function disgShow(){if(!MP.hz)MP.hz=mkAv();if(MP.hz)MP.hz.root.visible=true}
 function disgHide(){if(MP.hz)MP.hz.root.visible=false}
-function disgTick(dt){const P=BODY,d=Math.hypot(pl.x-P.x,pl.z-P.z);
+function disgTick(dt){const P=BODY;
  if(!MP.hz)MP.hz=mkAv();
- if(d>55){bodyHide();return}
+ if(Math.hypot(pl.x-P.x,pl.z-P.z)>55){bodyHide();return}
  P.disT-=dt;
- if(P.disT<=0){disgHide();P.state='lurk';P.lurkT=.5;P.spd=0;P.shake=0;P.seenT=0;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return}
- if(d>6.5)bodySteer(dt,pl.x,pl.z,3.1,4);
- else{P.spd*=Math.max(0,1-dt*6);P.yaw+=Math.max(-2*dt,Math.min(2*dt,wrap(Math.atan2(pl.x-P.x,pl.z-P.z)-P.yaw)))}
+ if(P.disT<=0){
+  // Transform: swap from the exact multiplayer player avatar to the Skin Stealer.
+  disgHide();P.state='chase';P.spd=0;P.shake=0;P.seenT=0;P.lostT=0;P.farT=0;
+  P.last=[pl.x,pl.z];P.gl=null;P.path=[];P.rp=0;P.lunge=0;P.lungeCd=.6;
+  P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return;
+ }
+ // Stay a short distance behind the player so it clearly follows them instead of attacking.
+ const tx=pl.x+Math.sin(pl.yaw)*2.0,tz=pl.z+Math.cos(pl.yaw)*2.0;
+ const trailD=Math.hypot(tx-P.x,tz-P.z);
+ if(trailD>1.35)bodySteer(dt,tx,tz,3.35,5.0);
+ else{P.spd*=Math.max(0,1-dt*7);const da=wrap(pl.yaw-P.yaw);P.yaw+=Math.max(-2.2*dt,Math.min(2.2*dt,da))}
  const mv=P.spd>.6;
- if(MP.hz){MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.y=P.yaw;avAnim(MP.hz,dt,mv,false)}
+ if(P.root)P.root.visible=false;
+ if(MP.hz){MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.set(0,P.yaw+Math.PI,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false)}
  if(mv&&A_()){P.stepT-=dt;if(P.stepT<=0){P.stepT=.52;playerStepSnd(P.x,P.z,false)}}}
 </script>
 </body>
