@@ -27,7 +27,6 @@ canvas{display:block;width:100%;height:100%}
 #toast{position:fixed;left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:86vw;text-align:center;color:#efe6b4;font:13px/1.35 Georgia,serif;letter-spacing:.04em;text-shadow:0 0 8px #000,0 0 3px #000;opacity:0;transition:opacity .6s;pointer-events:none}
 #recHud{position:fixed;top:15px;left:16px;right:auto;z-index:8;display:none;align-items:center;gap:8px;padding:6px 9px;background:rgba(5,7,5,.56);border:1px solid rgba(225,225,205,.23);border-radius:3px;color:rgba(244,242,224,.88);font:11px/1.1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;text-shadow:0 1px 3px #000;pointer-events:none;box-shadow:0 1px 8px rgba(0,0,0,.24)}
 #recDot{width:7px;height:7px;border-radius:50%;background:#d92727;box-shadow:0 0 6px rgba(240,30,30,.9);animation:recPulse 1.4s infinite}
-#recLabel{font-size:9px;opacity:.82;letter-spacing:.14em}
 #recTime{font-size:12px;letter-spacing:.08em;font-variant-numeric:tabular-nums}
 #vhsOverlay{position:fixed;inset:0;z-index:6;display:none;pointer-events:none;opacity:.34;mix-blend-mode:screen;overflow:hidden;box-shadow:inset 0 0 95px rgba(0,0,0,.42)}
 #vhsOverlay:before,#vhsOverlay:after{content:"";position:absolute;inset:0;pointer-events:none}
@@ -53,7 +52,7 @@ body.vhs-on canvas{animation:vhsJitter 13s steps(2,end) infinite}
 </head>
 <body>
 <div id="fatalError" role="alert"></div><div id="ov"><div><h1>THE BACKROOMS</h1><p>Click to play</p><p><b>W A S D</b> move · <b>Mouse</b> look · <b>Shift</b> sprint · <b>Space</b> torch / Almond Water nearby · <b>Esc</b> pause</p><p style="font-size:11px;opacity:.7">Explore carefully.</p></div></div>
-<div id="dead"><h1>YOU DIED</h1><div id="survived">Time survived: 00:00</div><div>Click to try again</div></div><div id="secretPanel" aria-hidden="true"><div class="secretCard"><h2>SECRET ACCESS</h2><p>Enter password</p><form id="secretForm"><input id="secretInput" type="password" maxlength="12" autocomplete="off" spellcheck="false" aria-label="Password"><button type="submit">ENTER</button></form><p id="secretMessage">Press Escape to close</p></div></div><div id="fl"></div><div id="sb"><i id="sbf"></i></div><div id="tbat"><i id="tbf"></i></div><div id="toast"></div><div id="almondPrompt" aria-live="polite">SPACE — DRINK ALMOND WATER</div><div id="vhsOverlay" aria-hidden="true"></div><div id="recHud" aria-hidden="true"><span id="recDot"></span><span id="recLabel">TIME SURVIVED</span><span id="recTime">00:00</span></div>
+<div id="dead"><h1>YOU DIED</h1><div id="survived">Time survived: 00:00</div><div>Click to try again</div></div><div id="secretPanel" aria-hidden="true"><div class="secretCard"><h2>SECRET ACCESS</h2><p>Enter password</p><form id="secretForm"><input id="secretInput" type="password" maxlength="12" autocomplete="off" spellcheck="false" aria-label="Password"><button type="submit">ENTER</button></form><p id="secretMessage">Press Escape to close</p></div></div><div id="fl"></div><div id="sb"><i id="sbf"></i></div><div id="tbat"><i id="tbf"></i></div><div id="toast"></div><div id="almondPrompt" aria-live="polite">SPACE — DRINK ALMOND WATER</div><div id="vhsOverlay" aria-hidden="true"></div><div id="recHud" aria-hidden="true"><span id="recDot"></span><span id="recTime">00:00</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
@@ -395,6 +394,63 @@ function normalMonsterAudioTick(distance){
  const gap=distance<4?1.35:distance<8?1.9:distance<15?2.7:distance<25?3.6:4.8;
  NMS.nextPulse=now+gap*1000;
 }
+const CMS={
+ body:{buffer:null,loading:false,pending:[],retryAt:0,duration:68.48,nextPulse:0},
+ balloon:{buffer:null,loading:false,pending:[],retryAt:0,duration:67.16,nextPulse:0}
+};
+async function loadSharedMonsterSound(kind){
+ const cfg=CMS[kind];if(!cfg||cfg.buffer||cfg.loading||!window.ac||performance.now()<cfg.retryAt)return;
+ cfg.loading=true;
+ try{
+  const file=kind==='body'?'body-monster-chase.mp3':'balloon-monster-chase.mp3';
+  const response=await fetch(file,{cache:'force-cache'});
+  if(!response.ok)throw new Error('HTTP '+response.status);
+  const bytes=await response.arrayBuffer();cfg.buffer=await window.ac.decodeAudioData(bytes.slice(0));
+  cfg.duration=cfg.buffer.duration;
+  const queued=cfg.pending.splice(0),serverNow=Date.now()+(Number(MP&&MP.serverOffset)||0);
+  for(const event of queued)if(Number(event.at||0)>=serverNow-1400)playSharedMonsterSnippet(kind,event);
+ }catch(error){cfg.retryAt=performance.now()+5000;console.warn('Could not load '+kind+' monster audio',error)}
+ finally{cfg.loading=false}
+}
+function loadSharedMonsterSounds(){loadSharedMonsterSound('body');loadSharedMonsterSound('balloon')}
+function playSharedMonsterSnippet(kind,event){
+ const cfg=CMS[kind];if(!cfg)return;
+ if(!A_()){cfg.pending.push(event);if(cfg.pending.length>10)cfg.pending.shift();return}
+ if(!cfg.buffer){cfg.pending.push(event);if(cfg.pending.length>10)cfg.pending.shift();loadSharedMonsterSound(kind);return}
+ const a=window.ac,buffer=cfg.buffer,duration=Math.max(.55,Math.min(1.5,Number(event.duration)||1.1));
+ const offset=Math.max(0,Math.min(Math.max(0,buffer.duration-duration),Number(event.offset)||0));
+ const serverNow=Date.now()+(Number(MP&&MP.serverOffset)||0),delay=Math.max(0,(Number(event.at||serverNow)-serverNow)/1000);
+ const startAt=a.currentTime+delay+.015,source=a.createBufferSource();source.buffer=buffer;
+ const gain=a.createGain(),pan=a.createPanner();pan.panningModel='HRTF';pan.distanceModel='inverse';pan.refDistance=1;pan.maxDistance=1000;pan.rolloffFactor=0;
+ const x=Number(event.x)||0,z=Number(event.z)||0;
+ if(pan.positionX){pan.positionX.setValueAtTime(x,startAt);pan.positionY.setValueAtTime(1.4,startAt);pan.positionZ.setValueAtTime(z,startAt)}else pan.setPosition(x,1.4,z);
+ const distance=Math.hypot(pl.x-x,pl.z-z);
+ // Full volume within 3 metres, then a smooth falloff as the monster gets farther away.
+ const volume=distance<=3?1:Math.max(.025,Math.pow(1-Math.min(1,(distance-3)/38),1.35));
+ const fadeIn=Math.min(.06,duration*.12),fadeOut=Math.min(.16,duration*.2);
+ gain.gain.setValueAtTime(0,startAt);gain.gain.linearRampToValueAtTime(volume,startAt+fadeIn);
+ gain.gain.setValueAtTime(volume,startAt+duration-fadeOut);gain.gain.linearRampToValueAtTime(0,startAt+duration);
+ source.connect(gain).connect(pan).connect(AB.mg);source.start(startAt,offset,duration);
+ source.onended=()=>{try{source.disconnect();gain.disconnect();pan.disconnect()}catch(_e){}};
+}
+function sendSharedMonsterSnippet(kind,x,z){
+ const cfg=CMS[kind];if(!cfg)return;
+ const duration=.9+Math.random()*.5,offset=Math.random()*Math.max(0,cfg.duration-duration);
+ const packet={kind,x,z,offset,duration};
+ if(MP.ws&&MP.ws.readyState===1){
+  try{MP.ws.send(JSON.stringify({t:'xs',...packet}))}catch(_e){playSharedMonsterSnippet(kind,{...packet,at:Date.now()+50})}
+ }else playSharedMonsterSnippet(kind,{...packet,at:Date.now()+50});
+}
+function sharedMonsterAudioTick(kind,P,target){
+ const cfg=CMS[kind];
+ if(!cfg||P.state!=='chase'||!target){if(cfg)P.soundNextAt=0;return}
+ const d=Math.hypot(target.x-P.x,target.z-P.z);
+ if(d>40){P.soundNextAt=0;return}
+ const now=performance.now();if(P.soundNextAt&&now<P.soundNextAt)return;
+ sendSharedMonsterSnippet(kind,P.x,P.z);
+ const gap=d<4?2.0:d<8?2.5:d<16?3.2:4.0;
+ P.soundNextAt=now+(gap+Math.random()*.45)*1000;
+}
 function nzb(d,dur,f,q,v,del,type){const a=ac,t=a.currentTime+(del||0),n=a.createBuffer(1,Math.max(1,a.sampleRate*dur|0),a.sampleRate),x=n.getChannelData(0);
  for(let i=0;i<x.length;i++)x[i]=Math.random()*2-1;
  const s=a.createBufferSource();s.buffer=n;const b=a.createBiquadFilter();b.type=type||'bandpass';b.frequency.value=f;b.Q.value=q||1;
@@ -537,7 +593,7 @@ function hum(){
   [120,240,360.7].forEach((f,i)=>{const o=a.createOscillator(),g=a.createGain();o.type=i?'sine':'sawtooth';o.frequency.value=f;g.gain.value=[.5,.25,.12][i];o.connect(g).connect(bz);o.start()});
   const nb=a.createBuffer(1,a.sampleRate*2,a.sampleRate),d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
   const ns=a.createBufferSource();ns.buffer=nb;ns.loop=true;const hp=a.createBiquadFilter();hp.type='highpass';hp.frequency.value=4000;const ng=a.createGain();ng.gain.value=.08;ns.connect(hp).connect(ng).connect(bz);ns.start();
-  const dr=a.createOscillator(),dg=a.createGain();dr.frequency.value=38;dg.gain.value=0;dr.connect(dg).connect(mg);dr.start();AB.bz=bz;AB.dr=dg}catch(e){}
+  const dr=a.createOscillator(),dg=a.createGain();dr.frequency.value=38;dg.gain.value=0;dr.connect(dg).connect(mg);dr.start();AB.bz=bz;AB.dr=dg;loadSharedMonsterSounds()}catch(e){}
 }
 
 // ---- player ----
@@ -546,6 +602,44 @@ const sbf=document.getElementById("sbf"),sbw=document.getElementById("sb");
 // Previously this const was declared at the very bottom of the file, causing
 // a temporal-dead-zone ReferenceError and stopping the whole game at startup.
 const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false,corpseTriggered:new Set(),bodyNetOwned:false,bodySyncAt:0,remoteBody:null,remoteBodyRoot:null,remoteBodyAvatar:null,chairNetOwned:false,blackoutNetOwned:false,partyNetOwned:false,worldSendT:0,remoteBlackout:null,remoteChair:null,remoteChairRoot:null,remoteChairMixer:null,remoteParty:null,remotePartyRoot:null,balloonPopped:new Set(),remoteChairWasActive:false,remoteBlackoutWasActive:false,serverOffset:0};
+function mpLivePlayerTargets(){
+ const list=[],now=performance.now();
+ if(!dead)list.push({id:MP.id==null?'local':MP.id,x:pl.x,z:pl.z,yaw:pl.yaw,local:true});
+ for(const [id,p] of MP.peers){
+  if(!p||p.dd||now-(p.seen||0)>3500)continue;
+  list.push({id,x:Number.isFinite(p.x)?p.x:p.tx,z:Number.isFinite(p.z)?p.z:p.tz,yaw:Number.isFinite(p.yaw)?p.yaw:p.ty,local:false});
+ }
+ return list;
+}
+function mpNearestLiveTarget(x,z){
+ let best=null,bestD=Infinity;
+ for(const p of mpLivePlayerTargets()){
+  const d=Math.hypot(p.x-x,p.z-z);
+  if(d<bestD){bestD=d;best=p}
+ }
+ return best?{...best,distance:bestD}:null;
+}
+function mpHasLiveRemotePlayer(){
+ const now=performance.now();
+ for(const p of MP.peers.values())if(p&&!p.dd&&now-(p.seen||0)<=3500)return true;
+ return false;
+}
+function mpMonsterTarget(P){
+ const target=mpNearestLiveTarget(P.x,P.z),nextId=target?target.id:null;
+ if(P.targetId!==nextId){
+  P.targetId=nextId;P.pp=target?[target.x,target.z]:[0,0];P.ppAcc=0;
+  if(target){P.last=[target.x,target.z];P.pdir=[0,1]}
+  P.seenT=0;P.lostT=0;P.farT=0;P.soundNextAt=0;
+ }
+ return target;
+}
+function mpTargetSeesSpot(x,z,target){
+ if(!target)return false;
+ if(target.local)return partyView(x,z,1.2);
+ const dx=x-target.x,dz=z-target.z,d=Math.hypot(dx,dz)||1;
+ const fx=-Math.sin(target.yaw||0),fz=-Math.cos(target.yaw||0);
+ return (dx*fx+dz*fz)/d>.4&&los(target.x,target.z,x,z);
+}
 window._worldSeed = (MP.seed!=null?MP.seed:(Math.random()*0x7fffffff)|0);
 const pl={st:1,exh:false,sprint:false,x:33,z:33,yaw:0,pitch:0,phase:0,amp:0};
 const ALMOND={boost:0,drinkAnim:0};
@@ -606,7 +700,7 @@ ov.addEventListener('click',()=>{
  document.body.classList.add('vhs-on');
  if(!gameStarted){gameStarted=true;survivalSeconds=0;window._worldSeed=(MP.seed!=null?MP.seed:(Math.random()*0x7fffffff)|0);pickRandomSpawn();mpRequestSpawn('start',pl.x,pl.z);}
  if(window.ac&&ac.state==='suspended')ac.resume();
- renderer.domElement.requestPointerLock();hum();loadMonsterChaseSound();
+ renderer.domElement.requestPointerLock();hum();loadMonsterChaseSound();loadSharedMonsterSounds();
 });
 document.addEventListener('pointerlockchange',()=>{
  if(dead){ov.style.display='none';return}
@@ -811,17 +905,16 @@ const wallAmbush={phase:'idle',target:null,timer:0,jumpT:0,grace:0,cooldown:24+M
 const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 // Track a genuine escape through corridors: the monster must lose line of sight,
 // and the player must travel while making several clear direction changes.
-function trackEscapeRoute(T,dt,hasLineOfSight){
- if(hasLineOfSight){T.escapeBlind=0;T.escapeTurns=0;T.escapeMove=0;T.escapeTurn=0;T.escapeTurnCd=0;T.escapePrevX=pl.x;T.escapePrevZ=pl.z;T.escapePrevYaw=pl.yaw;return false}
+function trackEscapeRoute(T,dt,hasLineOfSight,target){
+ const q=target||{x:pl.x,z:pl.z,yaw:pl.yaw};
+ if(hasLineOfSight){T.escapeBlind=0;T.escapeTurns=0;T.escapeMove=0;T.escapeTurn=0;T.escapeTurnCd=0;T.escapePrevX=q.x;T.escapePrevZ=q.z;T.escapePrevYaw=q.yaw;return false}
  T.escapeBlind=(T.escapeBlind||0)+dt;
- if(!Number.isFinite(T.escapePrevX)){T.escapePrevX=pl.x;T.escapePrevZ=pl.z;T.escapePrevYaw=pl.yaw}
- T.escapeMove=(T.escapeMove||0)+Math.hypot(pl.x-T.escapePrevX,pl.z-T.escapePrevZ);
- T.escapeTurn=(T.escapeTurn||0)+Math.abs(wrap(pl.yaw-T.escapePrevYaw));
+ if(!Number.isFinite(T.escapePrevX)){T.escapePrevX=q.x;T.escapePrevZ=q.z;T.escapePrevYaw=q.yaw}
+ T.escapeMove=(T.escapeMove||0)+Math.hypot(q.x-T.escapePrevX,q.z-T.escapePrevZ);
+ T.escapeTurn=(T.escapeTurn||0)+Math.abs(wrap(q.yaw-T.escapePrevYaw));
  T.escapeTurnCd=Math.max(0,(T.escapeTurnCd||0)-dt);
- T.escapePrevX=pl.x;T.escapePrevZ=pl.z;T.escapePrevYaw=pl.yaw;
- if(T.escapeMove>=2.2&&T.escapeTurn>=1.0&&T.escapeTurnCd<=0){
-  T.escapeTurns=(T.escapeTurns||0)+1;T.escapeMove=0;T.escapeTurn=0;T.escapeTurnCd=.75;
- }
+ T.escapePrevX=q.x;T.escapePrevZ=q.z;T.escapePrevYaw=q.yaw;
+ if(T.escapeMove>=2.2&&T.escapeTurn>=1.0&&T.escapeTurnCd<=0){T.escapeTurns=(T.escapeTurns||0)+1;T.escapeMove=0;T.escapeTurn=0;T.escapeTurnCd=.75}
  return T.escapeBlind>=2.2&&T.escapeTurns>=3;
 }
 function setS(s){if(s=='chase'&&AI.s!='chase'){AI.chases++;sting()}AI.s=s;AI.tg=null;AI.gl=null;AI.rp=0;AI.pause=0;AI.after=null;AI.pts=[];AI.fail=false;
@@ -1380,19 +1473,18 @@ function spawnMon(){
 }
 function finishDeath(){
  if(dead)return;
+ const keepParty=!!(MP.partyNetOwned&&mpHasLiveRemotePlayer());
+ const keepBody=!!(MP.bodyNetOwned&&mpHasLiveRemotePlayer());
  dead=true;deadT=2;document.body.classList.remove('vhs-on');
- if(MP.ws&&MP.ws.readyState===1){mpSendWorld('blackout',{active:0});mpSendWorld('chair',{active:0});mpSendWorld('party',{active:0})}
- MP.blackoutNetOwned=false;MP.chairNetOwned=false;MP.partyNetOwned=false;
+ if(MP.ws&&MP.ws.readyState===1){mpSendWorld('blackout',{active:0});mpSendWorld('chair',{active:0});if(!keepParty)mpSendWorld('party',{active:0})}
+ MP.blackoutNetOwned=false;MP.chairNetOwned=false;
+ if(!keepParty)MP.partyNetOwned=false;
  LK.bo=false;LK.tg=1;LK.red=0;blackoutPhase='idle';blackoutRemaining=0;blackoutHardStop=0;chairPhase='idle';chairPhaseT=0;chairPhaseHardStop=0;applyK();
- hideMonsterApparition();
- if(monRoot)monRoot.visible=false;
- if(typeof partyHide==='function')partyHide();
- if(typeof bodyHide==='function')bodyHide();
- scream();
- survivedEl.textContent='Time survived: '+formatSurvivalTime(survivalSeconds);
- // No black fade or jumpscare delay: show the death screen immediately.
- fl.style.opacity=0;
- dd.style.display='flex';
+ hideMonsterApparition();if(monRoot)monRoot.visible=false;
+ if(!keepParty&&typeof partyHide==='function')partyHide();
+ if(!keepBody&&typeof bodyHide==='function')bodyHide();
+ scream();survivedEl.textContent='Time survived: '+formatSurvivalTime(survivalSeconds);
+ fl.style.opacity=0;dd.style.display='flex';
  if(document.pointerLockElement)document.exitPointerLock();
 }
 function caught(){finishDeath()}
@@ -1488,7 +1580,7 @@ function monsterStep(dt){
 }
 dd.onclick=()=>{
  hideMonsterApparition();MON_APP.cooldownUntil=0;MON_APP.nextAt=0;
- dead=false;document.body.classList.add('vhs-on');dd.style.display='none';fl.style.opacity=0;closeSecretPanel();wallAmbush.phase='idle';wallAmbush.target=null;wallAmbush.timer=0;wallAmbush.jumpT=0;wallAmbush.grace=0;wallAmbush.cooldown=24+Math.random()*24;mon.on=false;stalkUnseen=0;stalkCooldown=18+Math.random()*18;stalkPending=false;stalkHideTimer=0;stalkWasSeen=false;if(monRoot)monRoot.visible=false;if(normalRoot)normalRoot.visible=false;if(chairRoot)chairRoot.visible=false;if(typeof bodyHide==='function')bodyHide();monRoot=normalRoot;chairMode=false;chairEncountered=false;chairPhase='idle';chairPhaseT=0;chairPhaseHardStop=0;chairMonsterSpawned=false;if(chairMesh){scene.remove(chairMesh);chairMesh=null}chairPosition=null;chairSpawned=false;chairCheckedChunks.clear();LK.red=0;setS('wander');dreadFx(10,false,99);
+ dead=false;document.body.classList.add('vhs-on');dd.style.display='none';fl.style.opacity=0;closeSecretPanel();wallAmbush.phase='idle';wallAmbush.target=null;wallAmbush.timer=0;wallAmbush.jumpT=0;wallAmbush.grace=0;wallAmbush.cooldown=24+Math.random()*24;mon.on=false;stalkUnseen=0;stalkCooldown=18+Math.random()*18;stalkPending=false;stalkHideTimer=0;stalkWasSeen=false;if(monRoot)monRoot.visible=false;if(normalRoot)normalRoot.visible=false;if(chairRoot)chairRoot.visible=false;if(typeof bodyHide==='function'&&(!MP.bodyNetOwned||!mpHasLiveRemotePlayer()))bodyHide();monRoot=normalRoot;chairMode=false;chairEncountered=false;chairPhase='idle';chairPhaseT=0;chairPhaseHardStop=0;chairMonsterSpawned=false;if(chairMesh){scene.remove(chairMesh);chairMesh=null}chairPosition=null;chairSpawned=false;chairCheckedChunks.clear();LK.red=0;setS('wander');dreadFx(10,false,99);
  const deathX=pl.x,deathZ=pl.z;
  survivalSeconds=0;gameStarted=true;survivedEl.textContent='Time survived: 00:00';
  LK.bo=false;LK.b=1;LK.tg=1;LK.red=0;blackoutPhase='idle';blackoutRemaining=0;blackoutHardStop=0;chairPhaseHardStop=0;MP.blackoutNetOwned=false;MP.remoteBlackout=null;MP.remoteBlackoutWasActive=false;EV.bo=42+Math.random()*30;applyK();
@@ -1500,11 +1592,11 @@ renderer.domElement.addEventListener('click',()=>{if(!dead)renderer.domElement.r
 // Balloons are placed per chunk (deterministic for the world seed), tied to the floor with a string.
 // A brief deliberate look at a balloon pops it into confetti and summons the partygoer.
 const BALLOON_CHANCE=.035;  // rarer balloon placement in ordinary chunks
-const BALLOON_LOOK=0.15;    // half the previous gaze time; no distance limit
+const BALLOON_LOOK=0.075;   // half the supplied build's previous gaze time; no distance limit
 const PARTY_SPEED=7.0;      // matched to body monster; still under player sprint 7.5
 const PARTY={balloons:new Map(),done:new Set(),popped:new Set(),state:'idle',root:null,
  x:0,z:0,yaw:0,spd:0,turn:0,anim:0,path:[],pi:1,gl:null,rp:0,lurkT:0,seenT:0,lostT:0,farT:0,
- last:[0,0],pdir:[0,1],pp:[0,0],ppAcc:0,lunge:0,lungeCd:1.5,fac:1,facG:1,facT:0,stepT:1,d:99,pendT:0,pendTry:0};
+ last:[0,0],pdir:[0,1],pp:[0,0],ppAcc:0,lunge:0,lungeCd:1.5,fac:1,facG:1,facT:0,stepT:1,d:99,pendT:0,pendTry:0,targetId:null,soundNextAt:0};
 const BAL_GEO=new THREE.SphereGeometry(.3,20,14),KNOT_GEO=new THREE.ConeGeometry(.05,.1,10),WT_GEO=new THREE.CylinderGeometry(.06,.07,.04,10);
 const BAL_MAT=new THREE.MeshPhongMaterial({color:0xd8101a,emissive:0x4a0408,specular:0xffb0b0,shininess:80});
 const STR_MAT=new THREE.LineBasicMaterial({color:0xe6e2d0}),WT_MAT=new THREE.MeshLambertMaterial({color:0x6a6a60}),STR_N=10;
@@ -1618,21 +1710,23 @@ function partyView(x,z,y){
  return(dx*fx+dy*fy+dz*fz)/d>.4&&los(pl.x,pl.z,x,z);
 }
 // somewhere close, reachable, and out of the player's view (preferring behind them)
-function findPartySpot(){
- const fx=-Math.sin(pl.yaw),fz=-Math.cos(pl.yaw);
+function findPartySpot(target){
+ target=target||mpNearestLiveTarget(pl.x,pl.z);if(!target)return null;
+ const fx=-Math.sin(target.yaw||0),fz=-Math.cos(target.yaw||0);
  for(const [mn,mx] of [[13,20],[10,27]]){
   const c=[];
   for(let t=0;t<100&&c.length<10;t++){
-   const a=Math.random()*6.283,d=mn+Math.random()*(mx-mn),x=pl.x+Math.sin(a)*d,z=pl.z+Math.cos(a)*d;
-   if(!isFree(x,z,MR+.3)||partyView(x,z))continue;
-   c.push({x,z,f:((x-pl.x)*fx+(z-pl.z)*fz)/d});
+   const a=Math.random()*6.283,d=mn+Math.random()*(mx-mn),x=target.x+Math.sin(a)*d,z=target.z+Math.cos(a)*d;
+   if(!isFree(x,z,MR+.3)||mpTargetSeesSpot(x,z,target))continue;
+   c.push({x,z,f:((x-target.x)*fx+(z-target.z)*fz)/d});
   }
   c.sort((p,q)=>p.f-q.f);
-  for(const p of c.slice(0,6)){const path=findPath(p.x,p.z,pl.x,pl.z);if(path&&path.length>1&&path.length<90)return{x:p.x,z:p.z,path}}
+  for(const p of c.slice(0,6)){const path=findPath(p.x,p.z,target.x,target.z);if(path&&path.length>1&&path.length<90)return{x:p.x,z:p.z,path}}
  }
- return findBehindSpot(10,20);
+ const x=target.x+Math.sin(target.yaw||0)*12,z=target.z+Math.cos(target.yaw||0)*12,path=findPath(x,z,target.x,target.z);
+ return path?{x,z,path}:null;
 }
-function startParty(){if(PARTY.state==='idle'){PARTY.state='pending';PARTY.pendT=.4;PARTY.pendTry=0;MP.partyNetOwned=true;MP.worldSendT=0}}
+function startParty(){if(PARTY.state==='idle'){PARTY.x=pl.x;PARTY.z=pl.z;PARTY.state='pending';PARTY.pendT=.4;PARTY.pendTry=0;MP.partyNetOwned=true;MP.worldSendT=0}}
 function popBalloon(b){
  const p=b.g.position,px=p.x,py=p.y,pz=p.z;
  PARTY.popped.add(b.key);PARTY.done.add(b.key);PARTY.balloons.delete(b.key);removeBalloon(b);
@@ -1654,74 +1748,73 @@ function partySteer(dt,tx,tz,spd,tr){
 }
 function partyMonsterTick(dt,dark){
  const P=PARTY;if(P.state==='idle')return;
- if(dark){if(P.root)P.root.visible=false;disgHide();return} // frozen & hidden during blackouts / the chair sequence, like the main monster
+ if(dark){if(P.root)P.root.visible=false;return}
+ const target=mpMonsterTarget(P);
+ if(!target){partyHide();return}
  if(P.state==='pending'){
   P.pendT-=dt;if(P.pendT>0||!P.root)return;
-  const sp=findPartySpot();
-  if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(pl.x-P.x,pl.z-P.z);P.spd=0;P.turn=0;
-   P.state='lurk';P.lurkT=3+Math.random()*3.2;P.seenT=0;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true}
+  const sp=findPartySpot(target);
+  if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(target.x-P.x,target.z-P.z);P.spd=0;P.turn=0;
+   P.state='lurk';P.lurkT=3+Math.random()*3.2;P.seenT=0;P.last=[target.x,target.z];P.pp=[target.x,target.z];P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true}
   else{P.pendTry++;P.pendT=.5;if(P.pendTry>12)partyHide()}
   return;
  }
- if(P.state==='disguise'){disgTick(dt);return}
- const d=Math.hypot(pl.x-P.x,pl.z-P.z);P.d=d;P.root.visible=true;
- // track which way the player is heading so the monster can cut them off
+ const d=Math.hypot(target.x-P.x,target.z-P.z);P.d=d;P.root.visible=true;
  P.ppAcc+=dt;
- if(P.ppAcc>=.1){const vx=(pl.x-P.pp[0])/P.ppAcc,vz=(pl.z-P.pp[1])/P.ppAcc,vs=Math.hypot(vx,vz);P.pp=[pl.x,pl.z];if(vs>.5)P.pdir=[vx/vs,vz/vs];P.ppAcc=0}
+ if(P.ppAcc>=.1){const vx=(target.x-P.pp[0])/P.ppAcc,vz=(target.z-P.pp[1])/P.ppAcc,vs=Math.hypot(vx,vz);P.pp=[target.x,target.z];if(vs>.5)P.pdir=[vx/vs,vz/vs];P.ppAcc=0}
  if(P.state==='lurk'){
-  // stands motionless out of sight for a few seconds, then runs; charges early if you spot it
   P.lurkT-=dt;P.spd*=Math.max(0,1-dt*8);
-  P.yaw+=Math.max(-1.5*dt,Math.min(1.5*dt,wrap(Math.atan2(pl.x-P.x,pl.z-P.z)-P.yaw)));
-  P.seenT=(d<34&&partyView(P.x,P.z,1.2))?P.seenT+dt:Math.max(0,P.seenT-dt);
-  if(P.lurkT<=0||P.seenT>.7){P.state='chase';P.spd=3;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.2;P.last=[pl.x,pl.z];P.seenT=0}
+  P.yaw+=Math.max(-1.5*dt,Math.min(1.5*dt,wrap(Math.atan2(target.x-P.x,target.z-P.z)-P.yaw)));
+  P.seenT=(d<34&&mpTargetSeesSpot(P.x,P.z,target))?P.seenT+dt:Math.max(0,P.seenT-dt);
+  if(P.lurkT<=0||P.seenT>.7){P.state='chase';P.spd=3;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.2;P.last=[target.x,target.z];P.seenT=0}
   P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,Math.sin(performance.now()*.0013)*.02);
   return;
  }
- // ---- chase ----
- if(d<1.2){caught(PARTY.root);return}
- const clearRoute=los(P.x,P.z,pl.x,pl.z),seen=d<34&&clearRoute;
- const escapedByTurns=trackEscapeRoute(P,dt,clearRoute);
- if(seen){P.lostT=0;P.last=[pl.x,pl.z]}else P.lostT+=dt;
+ if(d<1.2&&target.local){caught();return}
+ const clearRoute=los(P.x,P.z,target.x,target.z),seen=d<34&&clearRoute;
+ const escapedByTurns=trackEscapeRoute(P,dt,clearRoute,target);
+ if(seen){P.lostT=0;P.last=[target.x,target.z]}else P.lostT+=dt;
  P.farT=(d>26&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
- // Escape by distance or by losing it through several genuine corridor turns.
- if((P.farT>2.5||P.lostT>6||d>52||(escapedByTurns&&d>8))&&!partyView(P.x,P.z,1.2)){
-  if(Math.random()<0.5){partyHide();} // permanent until another balloon is triggered
-  else {P.root.visible=false;P.state='pending';P.pendT=5+Math.random()*25;P.pendTry=0;}
-  return}
+ if((P.farT>2.5||P.lostT>6||d>52||(escapedByTurns&&d>8))&&!mpTargetSeesSpot(P.x,P.z,target)){
+  if(Math.random()<0.5){partyHide()}
+  else{P.root.visible=false;P.state='pending';P.pendT=5+Math.random()*25;P.pendTry=0;P.soundNextAt=0}
+  return;
+ }
  P.facT-=dt;if(P.facT<=0){P.facT=1+Math.random()*1.8;P.facG=.88+Math.random()*.18}
  P.fac+=(P.facG-P.fac)*Math.min(1,dt*2);P.lungeCd-=dt;
- if(P.lunge>0){P.lunge-=dt;partySteer(dt,pl.x,pl.z,PARTY_SPEED*1.095,11);if(P.lunge<=0)P.lungeCd=1.05}
+ if(P.lunge>0){P.lunge-=dt;partySteer(dt,target.x,target.z,PARTY_SPEED*1.095,11);if(P.lunge<=0)P.lungeCd=1.05}
  else{
   if(seen&&d<3.4&&P.lungeCd<=0){P.lunge=.68;P.spd=Math.max(P.spd,4.8)}
   let tx,tz;
-  if(seen){const l=Math.min(2.2,d*.16);tx=pl.x+P.pdir[0]*l;tz=pl.z+P.pdir[1]*l}
+  if(seen){const l=Math.min(2.2,d*.16);tx=target.x+P.pdir[0]*l;tz=target.z+P.pdir[1]*l}
   else{tx=P.last[0]+P.pdir[0]*2;tz=P.last[1]+P.pdir[1]*2}
   partySteer(dt,tx,tz,PARTY_SPEED*P.fac,8);
  }
- if(Math.hypot(pl.x-P.x,pl.z-P.z)<1.2){caught(PARTY.root);return}
- // animation: lean into the run, waddle side to side, bounce
+ if(Math.hypot(target.x-P.x,target.z-P.z)<1.2&&target.local){caught();return}
  P.anim+=dt*(1+P.spd*1.1);
  const run=Math.min(1,P.spd/6),sw=Math.sin(P.anim*1.7),lt=run*.2+(P.lunge>0?.42:0);
  P.root.position.set(P.x,Math.abs(sw)*.09*run,P.z);
  P.root.rotation.y=P.yaw;P.root.rotation.x+=(lt-P.root.rotation.x)*Math.min(1,dt*8);
  P.root.rotation.z=sw*.09*run+Math.max(-.25,Math.min(.25,-P.turn*.04));
  if(P.spd>.5){P.stepT-=dt*(P.spd*.45+.6);if(P.stepT<=0){P.stepT=1;monsterStepSnd(P.x,P.z,P.spd>4.4)}}
+ sharedMonsterAudioTick('balloon',P,target);
 }
 function partyTick(dt,active){
- if(dead){partyHide();return}
- if(!gameStarted||!active)return;
+ if(!gameStarted)return;
+ if(dead){if(MP.partyNetOwned&&mpHasLiveRemotePlayer()){partyMonsterTick(dt,LK.bo||chairPhase!=='idle'||(MP.remoteChair&&!MP.chairNetOwned));return}if(MP.partyNetOwned)partyHide();return}
+ if(!active&&!MP.partyNetOwned)return;
  const t=performance.now()/1000,dark=LK.bo||chairPhase!=='idle'||(MP.remoteChair&&!MP.chairNetOwned);
  balloonSync();
  for(const b of PARTY.balloons.values())updateBalloonVisual(b,t);
  cfTick(dt);
- if(PARTY.state==='idle'&&!dark){
+ if(PARTY.state==='idle'&&!dark&&active){
   let pop=null;
   for(const b of PARTY.balloons.values()){
    if(balloonLooking(b)){b.look+=dt;if(b.look>BALLOON_LOOK&&!pop)pop=b}
    else b.look=Math.max(0,b.look-dt*1.5)}
   if(pop)popBalloon(pop);
- }else for(const b of PARTY.balloons.values())b.look=Math.max(0,b.look-dt);
- partyMonsterTick(dt,dark);
+ }else if(!active||dark)for(const b of PARTY.balloons.values())b.look=Math.max(0,b.look-dt);
+ if(MP.partyNetOwned)partyMonsterTick(dt,dark);
 }
 // ---- chair monster: after you escape it, 50% it despawns for a good while, 50% it vanishes and returns behind you ----
 function despawnChair(){
@@ -1738,7 +1831,7 @@ function despawnChair(){
 const BODY_SPEED=7.0; // same as party; under player sprint 7.5
 const BODY={state:'idle',root:null,x:0,z:0,yaw:0,spd:0,turn:0,anim:0,path:[],pi:1,gl:null,rp:0,
  lurkT:0,seenT:0,lostT:0,farT:0,last:[0,0],pdir:[0,1],pp:[0,0],ppAcc:0,lunge:0,lungeCd:1.2,
- fac:1,facG:1,facT:0,stepT:1,d:99,pendT:0,pendTry:0,pendMode:'disguise',shake:0,checkedCorpses:new Set()};
+ fac:1,facG:1,facT:0,stepT:1,d:99,pendT:0,pendTry:0,pendMode:'disguise',shake:0,checkedCorpses:new Set(),targetId:null,soundNextAt:0};
 function bodyFallback(){
  if(BODY.root)return;
  const g=new THREE.Group(),m=new THREE.MeshBasicMaterial({color:0x111111});
@@ -1770,19 +1863,21 @@ function bodyHide(){disgHide();BODY.state='idle';BODY.pendMode='';BODY.spd=0;BOD
 function bodyReset(){bodyHide();BODY.checkedCorpses.clear()}
 const bodyDist=()=>(BODY.state==='chase'||BODY.state==='lurk')?BODY.d:99;
 
-function findBodySpot(){
- const fx=-Math.sin(pl.yaw),fz=-Math.cos(pl.yaw);
+function findBodySpot(target){
+ target=target||mpNearestLiveTarget(pl.x,pl.z);if(!target)return null;
+ const fx=-Math.sin(target.yaw||0),fz=-Math.cos(target.yaw||0);
  for(const [mn,mx] of [[9,16],[12,22]]){
   const c=[];
   for(let t=0;t<80&&c.length<8;t++){
-   const a=Math.random()*6.283,d=mn+Math.random()*(mx-mn),x=pl.x+Math.sin(a)*d,z=pl.z+Math.cos(a)*d;
-   if(!isFree(x,z,MR+.3)||partyView(x,z))continue;
-   c.push({x,z,f:((x-pl.x)*fx+(z-pl.z)*fz)/d});
+   const a=Math.random()*6.283,d=mn+Math.random()*(mx-mn),x=target.x+Math.sin(a)*d,z=target.z+Math.cos(a)*d;
+   if(!isFree(x,z,MR+.3)||mpTargetSeesSpot(x,z,target))continue;
+   c.push({x,z,f:((x-target.x)*fx+(z-target.z)*fz)/d});
   }
   c.sort((p,q)=>p.f-q.f);
-  for(const p of c.slice(0,5)){const path=findPath(p.x,p.z,pl.x,pl.z);if(path&&path.length>1&&path.length<80)return{x:p.x,z:p.z,path}}
+  for(const p of c.slice(0,5)){const path=findPath(p.x,p.z,target.x,target.z);if(path&&path.length>1&&path.length<80)return{x:p.x,z:p.z,path}}
  }
- return findBehindSpot(8,18);
+ const x=target.x+Math.sin(target.yaw||0)*9,z=target.z+Math.cos(target.yaw||0)*9,path=findPath(x,z,target.x,target.z);
+ return path?{x,z,path}:null;
 }
 const BODY_ENCOUNTER_CHANCE=.30;
 // Roll once per distinct corpse, rather than on every overlapping collision/update.
@@ -1796,9 +1891,10 @@ function tryBodyEncounter(corpseKey){
 }
 function startBodyEncounter(){
  if(BODY.state!=='idle')return false;
+ BODY.x=pl.x;BODY.z=pl.z;
  BODY.state='pending';BODY.pendMode='disguise';BODY.pendT=.25;BODY.pendTry=0;
  BODY.escapeBlind=0;BODY.escapeTurns=0;BODY.escapeMove=0;BODY.escapeTurn=0;
- BODY.disT=4.6+Math.random()*1.0;
+ BODY.disT=8.0+Math.random()*1.5;
  MP.bodyNetOwned=true;MP.bodySyncAt=0;if(typeof mpBodySync==='function')mpBodySync();return true;
 }
 
@@ -1816,74 +1912,64 @@ function bodySteer(dt,tx,tz,spd,tr){
 function bodyMonsterTick(dt,dark){
  const P=BODY;if(P.state==='idle')return;
  if(dark){if(P.root)P.root.visible=false;disgHide();return}
+ const target=mpMonsterTarget(P);
+ if(!target){bodyHide();return}
  if(P.state==='pending'){
   P.pendT-=dt;if(P.pendT>0||!P.root)return;
-  const ambush=P.pendMode==='ambush';
-  // The escape/reappear outcome deliberately uses a rear-half spawn and skips the disguise.
-  const sp=ambush?findBehindSpot(8,14):findBodySpot();
-  if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(pl.x-P.x,pl.z-P.z);P.spd=0;P.turn=0;
-   P.seenT=0;P.lostT=0;P.farT=0;P.stepT=0;P.last=[pl.x,pl.z];P.pendMode='';
+  const ambush=P.pendMode==='ambush',sp=findBodySpot(target);
+  if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(target.x-P.x,target.z-P.z);P.spd=0;P.turn=0;
+   P.seenT=0;P.lostT=0;P.farT=0;P.stepT=0;P.last=[target.x,target.z];P.pp=[target.x,target.z];P.pendMode='';
    if(ambush){disgHide();P.state='chase';P.root.visible=true;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.lunge=0;P.lungeCd=.35}
-   else{P.state='disguise';P.disT=5.0+Math.random()*1.0;P.root.visible=false;disgShow()}}
+   else{P.state='disguise';P.disT=8.0+Math.random()*1.5;P.root.visible=false;disgShow()}}
   else{P.pendTry++;P.pendT=.35;if(P.pendTry>10)bodyHide()}
   return;
  }
- // While disguised, render and animate the hazmat player avatar, not the monster skin.
- if(P.state==='disguise'){if(P.root)P.root.visible=false;if(!Number.isFinite(P.disT)||P.disT<=0)P.disT=5.0+Math.random()*1.0;disgTick(dt);return}
- const d=Math.hypot(pl.x-P.x,pl.z-P.z);P.d=d;P.root.visible=true;
+ if(P.state==='disguise'){if(P.root)P.root.visible=false;if(!Number.isFinite(P.disT)||P.disT<=0)P.disT=8.0+Math.random()*1.5;disgTick(dt);return}
+ const d=Math.hypot(target.x-P.x,target.z-P.z);P.d=d;P.root.visible=true;
  P.ppAcc+=dt;
- if(P.ppAcc>=.1){const vx=(pl.x-P.pp[0])/P.ppAcc,vz=(pl.z-P.pp[1])/P.ppAcc,vs=Math.hypot(vx,vz);P.pp=[pl.x,pl.z];if(vs>.5)P.pdir=[vx/vs,vz/vs];P.ppAcc=0}
+ if(P.ppAcc>=.1){const vx=(target.x-P.pp[0])/P.ppAcc,vz=(target.z-P.pp[1])/P.ppAcc,vs=Math.hypot(vx,vz);P.pp=[target.x,target.z];if(vs>.5)P.pdir=[vx/vs,vz/vs];P.ppAcc=0}
  if(P.state==='lurk'){
   P.lurkT-=dt;P.spd*=Math.max(0,1-dt*8);
-  P.yaw+=Math.max(-1.8*dt,Math.min(1.8*dt,wrap(Math.atan2(pl.x-P.x,pl.z-P.z)-P.yaw)));
-  P.seenT=(d<34&&partyView(P.x,P.z,1.2))?P.seenT+dt:Math.max(0,P.seenT-dt);
-  if(P.lurkT<=0||P.seenT>.45){P.state='chase';P.spd=3.2;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.0;P.last=[pl.x,pl.z];P.seenT=0}
-  // weird side-to-side shake while lurking
-  P.shake+=dt*2.8;
-  P.root.position.set(P.x,0,P.z);
-  P.root.rotation.set(0,P.yaw,Math.sin(P.shake)*.06);
+  P.yaw+=Math.max(-1.8*dt,Math.min(1.8*dt,wrap(Math.atan2(target.x-P.x,target.z-P.z)-P.yaw)));
+  P.seenT=(d<34&&mpTargetSeesSpot(P.x,P.z,target))?P.seenT+dt:Math.max(0,P.seenT-dt);
+  if(P.lurkT<=0||P.seenT>.45){P.state='chase';P.spd=3.2;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.0;P.last=[target.x,target.z];P.seenT=0}
+  P.shake+=dt*2.8;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,Math.sin(P.shake)*.06);
   return;
  }
- if(d<1.25){caught(P.root);return}
- const clearRoute=los(P.x,P.z,pl.x,pl.z),seen=d<34&&clearRoute;
- const escapedByTurns=trackEscapeRoute(P,dt,clearRoute);
- if(seen){P.lostT=0;P.last=[pl.x,pl.z]}else P.lostT+=dt;
+ if(d<1.25&&target.local){caught();return}
+ const clearRoute=los(P.x,P.z,target.x,target.z),seen=d<34&&clearRoute;
+ const escapedByTurns=trackEscapeRoute(P,dt,clearRoute,target);
+ if(seen){P.lostT=0;P.last=[target.x,target.z]}else P.lostT+=dt;
  P.farT=(d>28&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
- // Escape by distance or by leaving it behind several corridor turns.
- if((P.farT>2.8||P.lostT>5.5||d>50||(escapedByTurns&&d>8))&&!partyView(P.x,P.z,1.2)){
-  if(Math.random()<0.5){bodyHide();} // 50%: permanently despawn until another body is triggered
-  else { // 50%: disappear and return behind the player after a longer random delay
-   P.root.visible=false;disgHide();P.state='pending';P.pendMode='ambush';P.pendT=4+Math.random()*24;P.pendTry=0;
-  }
+ if((P.farT>2.8||P.lostT>5.5||d>50||(escapedByTurns&&d>8))&&!mpTargetSeesSpot(P.x,P.z,target)){
+  if(Math.random()<0.5){bodyHide()}
+  else{P.root.visible=false;disgHide();P.state='pending';P.pendMode='ambush';P.pendT=4+Math.random()*24;P.pendTry=0;P.soundNextAt=0}
   return;
  }
- P.facT-=dt;if(P.facT<=0){P.facT=1+Math.random()*1.6;P.facG=.9+Math.random()*0.16}
+ P.facT-=dt;if(P.facT<=0){P.facT=1+Math.random()*1.6;P.facG=.9+Math.random()*.16}
  P.fac+=(P.facG-P.fac)*Math.min(1,dt*2);P.lungeCd-=dt;
- if(P.lunge>0){P.lunge-=dt;bodySteer(dt,pl.x,pl.z,BODY_SPEED*1.08,11);if(P.lunge<=0)P.lungeCd=1.0}
+ if(P.lunge>0){P.lunge-=dt;bodySteer(dt,target.x,target.z,BODY_SPEED*1.08,11);if(P.lunge<=0)P.lungeCd=1.0}
  else{
   if(seen&&d<3.6&&P.lungeCd<=0){P.lunge=.6;P.spd=Math.max(P.spd,5.0)}
   let tx,tz;
-  if(seen){const l=Math.min(2.0,d*.15);tx=pl.x+P.pdir[0]*l;tz=pl.z+P.pdir[1]*l}
+  if(seen){const l=Math.min(2.0,d*.15);tx=target.x+P.pdir[0]*l;tz=target.z+P.pdir[1]*l}
   else{tx=P.last[0]+P.pdir[0]*2.2;tz=P.last[1]+P.pdir[1]*2.2}
   bodySteer(dt,tx,tz,BODY_SPEED*P.fac,8);
  }
- if(Math.hypot(pl.x-P.x,pl.z-P.z)<1.25){caught(P.root);return}
- // animation: lean + side-to-side walking weirdness
- P.anim+=dt*(1+P.spd*1.15);
- P.shake+=dt*(1.6+P.spd*.35);
+ if(Math.hypot(target.x-P.x,target.z-P.z)<1.25&&target.local){caught();return}
+ P.anim+=dt*(1+P.spd*1.15);P.shake+=dt*(1.6+P.spd*.35);
  const run=Math.min(1,P.spd/6.2),sw=Math.sin(P.anim*1.85),lt=run*.22+(P.lunge>0?.4:0);
- P.root.position.set(P.x,Math.abs(sw)*.08*run,P.z);
- P.root.rotation.y=P.yaw;
+ P.root.position.set(P.x,Math.abs(sw)*.08*run,P.z);P.root.rotation.y=P.yaw;
  P.root.rotation.x+=(lt-P.root.rotation.x)*Math.min(1,dt*8);
- P.root.rotation.z=sw*.11*run + Math.sin(P.shake)*.045*run + Math.max(-.22,Math.min(.22,-P.turn*.04));
+ P.root.rotation.z=sw*.11*run+Math.sin(P.shake)*.045*run+Math.max(-.22,Math.min(.22,-P.turn*.04));
  if(P.spd>.5){P.stepT-=dt*(P.spd*.45+.55);if(P.stepT<=0){P.stepT=1;monsterStepSnd(P.x,P.z,P.spd>4.2)}}
+ sharedMonsterAudioTick('body',P,target);
 }
 function bodyTick(dt,active){
- if(dead){bodyHide();return}
- if(!gameStarted||!active){if(MP.bodyNetOwned)mpBodySync();return}
- const dark=LK.bo||chairPhase!=='idle'||(MP.remoteChair&&!MP.chairNetOwned);
- bodyMonsterTick(dt,dark);
- mpBodySync();
+ if(!gameStarted)return;
+ if(dead){if(MP.bodyNetOwned&&mpHasLiveRemotePlayer()){bodyMonsterTick(dt,LK.bo||chairPhase!=='idle'||(MP.remoteChair&&!MP.chairNetOwned));mpBodySync();return}if(MP.bodyNetOwned)bodyHide();return}
+ if(!active&&!MP.bodyNetOwned){return}
+ if(MP.bodyNetOwned){const dark=LK.bo||chairPhase!=='idle'||(MP.remoteChair&&!MP.chairNetOwned);bodyMonsterTick(dt,dark);mpBodySync()}
 }
 
 
@@ -2174,7 +2260,7 @@ function mpRemoteWorldTick(dt){
  const q=MP.remoteParty;
  if(q){
   if(!MP.remotePartyRoot&&PARTY.root&&THREE.SkeletonUtils){try{MP.remotePartyRoot=THREE.SkeletonUtils.clone(PARTY.root);MP.remotePartyRoot.visible=false;scene.add(MP.remotePartyRoot)}catch(e){console.warn('Could not clone shared Partygoer',e)}}
-  if(MP.remotePartyRoot){const r=MP.remotePartyRoot,k=Math.min(1,dt*15);q.x+=(q.tx-q.x)*k;q.z+=(q.tz-q.z)*k;q.yaw+=wrap(q.tyaw-q.yaw)*k;r.visible=!!q.visible&&q.state!=='pending'&&gameStarted;r.position.set(q.x,0,q.z);r.rotation.set(q.rx||0,q.yaw,q.rz||0)}
+  if(MP.remotePartyRoot){const r=MP.remotePartyRoot,k=Math.min(1,dt*15);q.x+=(q.tx-q.x)*k;q.z+=(q.tz-q.z)*k;q.yaw+=wrap(q.tyaw-q.yaw)*k;r.visible=!!q.visible&&q.state!=='pending'&&gameStarted;r.position.set(q.x,0,q.z);r.rotation.set(q.rx||0,q.yaw,q.rz||0);if(q.state==='chase'&&!dead&&Math.hypot(pl.x-q.x,pl.z-q.z)<1.2){caught();return}}
  }else if(MP.remotePartyRoot)MP.remotePartyRoot.visible=false;
 }
 
@@ -2220,6 +2306,7 @@ function mpRemoteBodyTick(dt){
   if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;
   if(!MP.remoteBodyRoot)mpCreateRemoteBodyRoot();
   if(MP.remoteBodyRoot){const r=MP.remoteBodyRoot;r.visible=true;r.position.set(d.x,0,d.z);r.rotation.set(d.rx,d.yaw,d.rz)}
+  if(d.state==='chase'&&!dead&&Math.hypot(pl.x-d.x,pl.z-d.z)<1.25){caught();return}
  }
 }
 function mpRememberPlayer(d){
@@ -2266,6 +2353,7 @@ function mpFindSafeSpawn(targetX,targetZ){
    if(gameStarted){pickRandomSpawn();mpRequestSpawn('start',pl.x,pl.z)}else mpSendPendingSpawn();
   }else if(d.t==='s')mpRememberPlayer(d);
   else if(d.t==='ms')playNormalMonsterSnippet(d);
+  else if(d.t==='xs'&&(d.kind==='body'||d.kind==='balloon'))playSharedMonsterSnippet(d.kind,d);
   else if(d.t==='a'&&typeof d.key==='string')almondMarkPicked(d.key,false);
   else if(d.t==='w'){if(d.kind==='balloon-pop')mpApplyBalloonPop(d);else mpApplyWorld(d)}
   else if(d.t==='wd'&&d.denied){
@@ -2336,36 +2424,32 @@ function mpTick(dt){
 function disgShow(){if(!MP.hz)MP.hz=mkAv();if(MP.hz)MP.hz.root.visible=true}
 function disgHide(){if(MP.hz)MP.hz.root.visible=false}
 function disgTick(dt){const P=BODY;
+ const target=mpMonsterTarget(P);if(!target){bodyHide();return}
  if(!MP.hz)MP.hz=mkAv();
- if(Math.hypot(pl.x-P.x,pl.z-P.z)>55){bodyHide();return}
  // Wait for the real player avatar to load before counting the disguise time.
- // This guarantees the player-shaped follower is visible for the full delay.
  if(!MP.hz){if(P.root)P.root.visible=false;return}
  MP.hz.root.visible=true;
- P.disT=Math.max(0,(Number(P.disT)||4.6)-dt);
+ P.disT=Math.max(0,(Number(P.disT)||8.0)-dt);
  if(P.disT<=0){
-  // Transform: swap from the exact multiplayer player avatar to the Skin Stealer.
   disgHide();P.state='chase';P.spd=0;P.shake=0;P.seenT=0;P.lostT=0;P.farT=0;
-  P.last=[pl.x,pl.z];P.gl=null;P.path=[];P.rp=0;P.lunge=0;P.lungeCd=.6;
+  P.last=[target.x,target.z];P.pp=[target.x,target.z];P.gl=null;P.path=[];P.rp=0;P.lunge=0;P.lungeCd=.6;
   P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return;
  }
- // Stay a short distance behind the player so it clearly follows them instead of attacking.
-
- // Trail at a deliberate distance behind the player. BODY.yaw uses +Z as its zero direction.
  const trailGap=2.65;
- const tx=pl.x+Math.sin(pl.yaw)*trailGap,tz=pl.z+Math.cos(pl.yaw)*trailGap;
- const trailD=Math.hypot(tx-P.x,tz-P.z),playerD=Math.hypot(pl.x-P.x,pl.z-P.z);
+ const tx=target.x+Math.sin(target.yaw)*trailGap,tz=target.z+Math.cos(target.yaw)*trailGap;
+ const trailD=Math.hypot(tx-P.x,tz-P.z),playerD=Math.hypot(target.x-P.x,target.z-P.z);
  if(playerD>2.2&&trailD>.55)bodySteer(dt,tx,tz,3.0,5.0);
  else{
   P.spd*=Math.max(0,1-dt*8);
-  const faceYaw=pl.yaw+Math.PI,da=wrap(faceYaw-P.yaw);
+  const faceYaw=target.yaw+Math.PI,da=wrap(faceYaw-P.yaw);
   P.yaw+=Math.max(-2.2*dt,Math.min(2.2*dt,da));
  }
  const mv=P.spd>.6;
  if(P.root)P.root.visible=false;
- if(MP.hz){MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.set(0,P.yaw,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false)}
+ MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.set(0,P.yaw,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false);
+ if(mv&&A_()){P.stepT-=dt;if(P.stepT<=0){P.stepT=.52;playerStepSnd(P.x,P.z,false)}}
+}
 
- if(mv&&A_()){P.stepT-=dt;if(P.stepT<=0){P.stepT=.52;playerStepSnd(P.x,P.z,false)}}}
 </script>
 </body>
 </html>

@@ -35,6 +35,16 @@ function sweepWorldEvents() {
     sharedWorld.blackout = null;
     broadcastWorldEnd('blackout', blackout.from);
   }
+  if (sharedBody && sharedBody.active && now - (sharedBody.seen || now) > 3500) {
+    const ended = { t: 'b', active: 0, from: sharedBody.from };
+    sharedBody = null;
+    for (const peer of peers.values()) send(peer.ws, ended);
+  }
+  const party = sharedWorld.party;
+  if (party && party.active && now - (party.updatedAt || party.at || now) > 3500) {
+    sharedWorld.party = null;
+    broadcastWorldEnd('party', party.from);
+  }
   const chair = sharedWorld.chair;
   if (chair && chair.bo && now - (chair.updatedAt || chair.at || now) > 2500) {
     chair.bo = 0; chair.tg = 1; chair.red = 0;
@@ -90,7 +100,7 @@ function nearestLivePlayer(fromX, fromZ, exceptId) {
 wss.on('connection', (ws) => {
   sweepWorldEvents();
   const id = nextId++;
-  const peer = { ws, state: null, lastNormalSoundAt: 0 };
+  const peer = { ws, state: null, lastNormalSoundAt: 0, lastMonsterSoundAt: { body: 0, balloon: 0 } };
   peers.set(id, peer);
 
   // Send the shared maze seed and the live players already in the session.
@@ -279,6 +289,25 @@ wss.on('connection', (ws) => {
         x: cleanNumber(data.x), z: cleanNumber(data.z),
         offset: Math.max(0, Math.min(54.6, cleanNumber(data.offset))),
         duration, at: now + 450
+      };
+      for (const recipient of peers.values()) send(recipient.ws, packet);
+      return;
+    }
+
+    // Relay body/balloon monster sound snippets to every connected player.
+    // The future timestamp compensates for network jitter so all clients start together.
+    if (data.t === 'xs') {
+      const kind = data.kind;
+      if (kind !== 'body' && kind !== 'balloon') return;
+      const now = Date.now();
+      if (now - (peer.lastMonsterSoundAt[kind] || 0) < 450) return;
+      peer.lastMonsterSoundAt[kind] = now;
+      const packet = {
+        t: 'xs', kind, from: id,
+        x: cleanNumber(data.x), z: cleanNumber(data.z),
+        offset: Math.max(0, Math.min(68, cleanNumber(data.offset))),
+        duration: Math.max(0.55, Math.min(1.5, cleanNumber(data.duration, 1.1))),
+        at: now + 450
       };
       for (const recipient of peers.values()) send(recipient.ws, packet);
       return;
