@@ -588,11 +588,7 @@ function loop(t){
   collide();
   // Fall into pits / atrium voids
   if(!dead && isPit(pl.x, pl.z)){
-   dead=true; deadT=0;
-   if(monRoot) monRoot.visible=false; partyHide();
-   survivedEl.textContent='Time survived: '+(typeof formatSurvivalTime==='function'?formatSurvivalTime(survivalSeconds):'00:00');
-   fl.style.transition='none'; fl.style.background='#000'; fl.style.opacity=1;
-   if(typeof scream==='function') scream();
+   finishDeath();
   }
   pl.phase+=dt*sp*2.1;
  }
@@ -962,7 +958,7 @@ function chairExploreTick(dt){
  if(chairEncountered||chairPhase!=='idle'||!document.pointerLockElement)return;
  if(!chairSpawned){
   const moved=Math.hypot(pl.x-exploreAnchor[0],pl.z-exploreAnchor[1]);exploreAnchor=[pl.x,pl.z];exploreDistance+=moved;
-  if(exploreDistance>27){exploreDistance=0;if(Math.random()<.88){
+  if(exploreDistance>30){exploreDistance=0;if(Math.random()<.72){
    for(let k=0;k<25;k++){const a=Math.random()*Math.PI*2,d=17+Math.random()*28,x=pl.x+Math.sin(a)*d,z=pl.z+Math.cos(a)*d;if(isFree(x,z,1.2)){createChairAt(x,z);break}}
   }}
  }
@@ -1017,32 +1013,20 @@ function spawnMon(){
  // Later spawns: always behind the player
  if(!placeMonsterBehind(12,18,'chase')){if(!placeMonsterBehind(16,22,'chase')){playT=TRIG-.5;return}}
 }
-function caught(sourceRoot){
- dead=true;deadT=0;
- // Jumpscare: briefly show the killing monster's head/upper body in front of camera
- try{
-  const src = sourceRoot || monRoot || (PARTY.root && PARTY.root.visible ? PARTY.root : null) || (BODY && BODY.root && BODY.root.visible ? BODY.root : null);
-  if(src){
-   const clone = src.clone(true);
-   clone.visible = true;
-   clone.position.set(0,0,0);
-   clone.rotation.set(0, Math.PI, 0);
-   clone.scale.setScalar(1.15);
-   // place in hand/overlay scene style – use a temporary group attached near camera
-   const jg = new THREE.Group();
-   jg.add(clone);
-   jg.position.set(0, -0.15, -1.05);
-   camera.add(jg);
-   setTimeout(()=>{ try{camera.remove(jg); if(jg.parent)jg.parent.remove(jg);}catch(e){} }, 1100);
-  }
- }catch(e){console.warn('jumpscare',e)}
+function finishDeath(){
+ if(dead)return;
+ dead=true;deadT=2;
  if(monRoot)monRoot.visible=false;
  if(typeof partyHide==='function')partyHide();
  if(typeof bodyHide==='function')bodyHide();
  scream();
  survivedEl.textContent='Time survived: '+formatSurvivalTime(survivalSeconds);
- fl.style.transition='none';fl.style.background='#000';fl.style.opacity=1;
+ // No black fade or jumpscare delay: show the death screen immediately.
+ fl.style.opacity=0;
+ dd.style.display='flex';
+ if(document.pointerLockElement)document.exitPointerLock();
 }
+function caught(){finishDeath()}
 function monsterStep(dt){
  if(dead){deadT+=dt;if(deadT>1.8&&dd.style.display!='flex'){dd.style.display='flex';document.exitPointerLock()}return}
  if(!ready||!document.pointerLockElement)return;
@@ -1137,8 +1121,8 @@ renderer.domElement.addEventListener('click',()=>{if(!dead)renderer.domElement.r
 // ===== RED BALLOON + PARTYGOER MONSTER =====
 // Balloons are placed per chunk (deterministic for the world seed), tied to the floor with a string.
 // Looking at one for 3+ seconds pops it into confetti and summons the partygoer.
-const BALLOON_CHANCE=.12;   // slightly less common: chance that a 64x64 chunk holds a balloon
-const BALLOON_LOOK=0.6;     // seconds you must stare at a balloon to pop it (1/5 of original)
+const BALLOON_CHANCE=.08;   // reduced: chance that a non-anchor 64x64 chunk holds a balloon
+const BALLOON_LOOK=0.6;     // seconds of looking required before a balloon pops
 const PARTY_SPEED=7.0;      // matched to body monster; still under player sprint 7.5
 const PARTY={balloons:new Map(),done:new Set(),popped:new Set(),state:'idle',root:null,
  x:0,z:0,yaw:0,spd:0,turn:0,anim:0,path:[],pi:1,gl:null,rp:0,lurkT:0,seenT:0,lostT:0,farT:0,
@@ -1173,7 +1157,7 @@ function updateBalloonVisual(b,t){
 // is the player's crosshair on the balloon (inside a small cone, nothing in the way)?
 function balloonLooking(b){
  const dx=b.x-pl.x,dy=b.hy-1.8,dz=b.z-pl.z,d=Math.hypot(dx,dy,dz);
- if(d>44||d<.6)return false;
+ if(d<.6)return false; // no distance cap: a clearly visible balloon can pop from any range
  const cp=Math.cos(pl.pitch),fx=-Math.sin(pl.yaw)*cp,fy=Math.sin(pl.pitch),fz=-Math.cos(pl.yaw)*cp;
  if((dx*fx+dy*fy+dz*fz)/d<Math.cos(Math.atan2(.4,d)+.12))return false;
  return los(pl.x,pl.z,b.x,b.z);
@@ -1506,7 +1490,7 @@ function bodyTick(dt,active){
 
 
 // ===== FALLEN HAZMAT BODIES + TORCH =====
-const HZ_CHANCE=.12;        // slightly less common: chance that a 64x64 chunk holds a fallen body
+const HZ_CHANCE=.08;        // reduced: chance that a non-anchor 64x64 chunk holds a fallen body
 const TORCH_DRAIN=1/55;     // battery used per second while the torch is on (~55 s of light per charge)
 const TORCH_SLOW=.68;       // monster speed multiplier while the beam is on them
 const HZ={bodies:new Map(),done:new Set(),taken:new Set(),tpl:null,blood:[]};
@@ -1614,7 +1598,7 @@ function torchPickup(){
  else{TH.bat=1;toast('Another torch  —  battery restored')}
  if(A_()){nzb(AB.mg,.35,1200,.6,.25,0,'highpass');tn(AB.mg,300,520,.15,.12,'triangle')}
  // A natural corpse always triggers the body monster encounter.
- if(typeof startBody==='function'){startBody();toast('Something is following you...')}
+ if(typeof startBody==='function'){startBody()}
 }
 addEventListener('keydown',e=>{
  if(e.code!=='Space'||secretPanelOpen)return; // leave Space alone while typing in the code box
@@ -1731,7 +1715,7 @@ function mpRemoteBodyTick(dt){
  if(d.state==='disguise'){
   if(!MP.remoteBodyAvatar)MP.remoteBodyAvatar=mkAv();
   if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;
-  if(MP.remoteBodyAvatar){const av=MP.remoteBodyAvatar;av.root.visible=true;av.root.position.set(d.x,0,d.z);av.root.rotation.set(0,d.yaw+Math.PI,0);av.root.scale.set(1,1,1);avAnim(av,dt,d.spd>.6,false)}
+  if(MP.remoteBodyAvatar){const av=MP.remoteBodyAvatar;av.root.visible=true;av.root.position.set(d.x,0,d.z);av.root.rotation.set(0,d.yaw,0);av.root.scale.set(1,1,1);avAnim(av,dt,d.spd>.6,false)}
  }else{
   if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;
   if(!MP.remoteBodyRoot)mpCreateRemoteBodyRoot();
@@ -1851,13 +1835,21 @@ function disgTick(dt){const P=BODY;
   P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return;
  }
  // Stay a short distance behind the player so it clearly follows them instead of attacking.
- const tx=pl.x+Math.sin(pl.yaw)*2.0,tz=pl.z+Math.cos(pl.yaw)*2.0;
- const trailD=Math.hypot(tx-P.x,tz-P.z);
- if(trailD>1.35)bodySteer(dt,tx,tz,3.35,5.0);
- else{P.spd*=Math.max(0,1-dt*7);const da=wrap(pl.yaw-P.yaw);P.yaw+=Math.max(-2.2*dt,Math.min(2.2*dt,da))}
+
+ // Trail at a deliberate distance behind the player. BODY.yaw uses +Z as its zero direction.
+ const trailGap=2.65;
+ const tx=pl.x+Math.sin(pl.yaw)*trailGap,tz=pl.z+Math.cos(pl.yaw)*trailGap;
+ const trailD=Math.hypot(tx-P.x,tz-P.z),playerD=Math.hypot(pl.x-P.x,pl.z-P.z);
+ if(playerD>2.2&&trailD>.55)bodySteer(dt,tx,tz,3.0,5.0);
+ else{
+  P.spd*=Math.max(0,1-dt*8);
+  const faceYaw=pl.yaw+Math.PI,da=wrap(faceYaw-P.yaw);
+  P.yaw+=Math.max(-2.2*dt,Math.min(2.2*dt,da));
+ }
  const mv=P.spd>.6;
  if(P.root)P.root.visible=false;
- if(MP.hz){MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.set(0,P.yaw+Math.PI,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false)}
+ if(MP.hz){MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.set(0,P.yaw,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false)}
+
  if(mv&&A_()){P.stepT-=dt;if(P.stepT<=0){P.stepT=.52;playerStepSnd(P.x,P.z,false)}}}
 </script>
 </body>

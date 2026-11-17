@@ -38,7 +38,7 @@ The server binds to `0.0.0.0` and uses Render's `PORT` environment variable. `/h
 - The creature first appears using the same hazmat player avatar model and follows behind the player for about 4–5 seconds.
 - It then changes to its monster model and begins chasing.
 - If the player escapes, the creature has a 50% chance to despawn until another corpse encounter, or a 50% chance to disappear and respawn behind the player already attacking.
-- Balloon and natural-body chunk spawn chances have been reduced slightly; chair placement now requires more exploration and has a small additional chance check.
+- Balloon and natural-body spawn chances are reduced; chairs appear less frequently as exploration distance increases. Looking directly at a balloon for 0.6 seconds makes it pop regardless of distance, provided it is not blocked from view.
 - One client owns each active Skin Stealer encounter and streams its position, facing, movement, disguise/monster form, and hidden/active state through the server. Other clients render that same shared creature instead of independently spawning their own copy.
 - Late joiners receive the current active encounter state. The server prevents two clients from owning separate Skin Stealer encounters at the same time.
 
