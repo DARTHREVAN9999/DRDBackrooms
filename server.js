@@ -91,6 +91,19 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Relay gameplay events (for example, a player stepping on a corpse)
+    // to every connected client. Keep payloads small and validate coordinates.
+    if (data.t === 'e' && typeof data.event === 'string') {
+      const event = {
+        t: 'e', event: data.event.slice(0, 32), from: id,
+        x: cleanNumber(data.x), z: cleanNumber(data.z), at: Date.now()
+      };
+      for (const [otherId, other] of peers) {
+        if (otherId !== id) send(other.ws, event);
+      }
+      return;
+    }
+
     if (data.t === 'r') {
       // Use the player's current/death location as the reference point and
       // select whichever other living player is nearest to it.

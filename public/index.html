@@ -443,7 +443,7 @@ const sbf=document.getElementById("sbf"),sbw=document.getElementById("sb");
 // Multiplayer state must exist before the initial world seed is read below.
 // Previously this const was declared at the very bottom of the file, causing
 // a temporal-dead-zone ReferenceError and stopping the whole game at startup.
-const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false};
+const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false,corpseTriggered:new Set()};
 window._worldSeed = (MP.seed!=null?MP.seed:(Math.random()*0x7fffffff)|0);
 const pl={st:1,exh:false,sprint:false,x:33,z:33,yaw:0,pitch:0,phase:0,amp:0};
 function pickRandomSpawn(){
@@ -962,7 +962,7 @@ function chairExploreTick(dt){
  if(chairEncountered||chairPhase!=='idle'||!document.pointerLockElement)return;
  if(!chairSpawned){
   const moved=Math.hypot(pl.x-exploreAnchor[0],pl.z-exploreAnchor[1]);exploreAnchor=[pl.x,pl.z];exploreDistance+=moved;
-  if(exploreDistance>28){exploreDistance=0;if(Math.random()<.16){
+  if(exploreDistance>22){exploreDistance=0;{
    for(let k=0;k<25;k++){const a=Math.random()*Math.PI*2,d=17+Math.random()*28,x=pl.x+Math.sin(a)*d,z=pl.z+Math.cos(a)*d;if(isFree(x,z,1.2)){createChairAt(x,z);break}}
   }}
  }
@@ -1137,7 +1137,7 @@ renderer.domElement.addEventListener('click',()=>{if(!dead)renderer.domElement.r
 // ===== RED BALLOON + PARTYGOER MONSTER =====
 // Balloons are placed per chunk (deterministic for the world seed), tied to the floor with a string.
 // Looking at one for 3+ seconds pops it into confetti and summons the partygoer.
-const BALLOON_CHANCE=.09;   // chance that any given 64x64 chunk holds a balloon (lower = rarer)
+const BALLOON_CHANCE=.14;   // chance that any given 64x64 chunk holds a balloon (lower = rarer)
 const BALLOON_LOOK=0.6;     // seconds you must stare at a balloon to pop it (1/5 of original)
 const PARTY_SPEED=7.0;      // matched to body monster; still under player sprint 7.5
 const PARTY={balloons:new Map(),done:new Set(),popped:new Set(),state:'idle',root:null,
@@ -1187,7 +1187,7 @@ function balloonSync(){
   if(PARTY.popped.has(k)){PARTY.done.add(k);continue}
   const [cx,cz]=k.split(',').map(Number);
   const r=rng((Math.imul(cx,374761393)^Math.imul(cz,668265263)^(window._worldSeed|0)^0x2f6e1b)|0);
-  if(r()>=BALLOON_CHANCE){PARTY.done.add(k);continue}
+  if(!((cx&3)===0&&(cz&3)===0)&&r()>=BALLOON_CHANCE){PARTY.done.add(k);continue}
   const D=chunkData(cx,cz),cells=[];
   for(let i=0;i<N*N;i++)if(D.open[i]&&!D.pit[i])cells.push(i);
   let spot=null;
@@ -1499,7 +1499,7 @@ function bodyTick(dt,active){
 
 
 // ===== FALLEN HAZMAT BODIES + TORCH =====
-const HZ_CHANCE=.09;        // chance that a 64x64 chunk holds a body (lower = rarer)
+const HZ_CHANCE=.14;        // chance that a 64x64 chunk holds a body (lower = rarer)
 const TORCH_DRAIN=1/55;     // battery used per second while the torch is on (~55 s of light per charge)
 const TORCH_SLOW=.68;       // monster speed multiplier while the beam is on them
 const HZ={bodies:new Map(),done:new Set(),taken:new Set(),tpl:null,blood:[]};
@@ -1607,7 +1607,7 @@ function torchPickup(){
  else{TH.bat=1;toast('Another torch  —  battery restored')}
  if(A_()){nzb(AB.mg,.35,1200,.6,.25,0,'highpass');tn(AB.mg,300,520,.15,.12,'triangle')}
  // 50% chance a body monster spawns behind you and starts hunting
- if(Math.random()<0.5 && typeof startBody==='function'){startBody();toast('Something is behind you...')}
+ if(typeof startBody==='function'){startBody();toast('Something is behind you...')}
 }
 addEventListener('keydown',e=>{
  if(e.code!=='Space'||secretPanelOpen)return; // leave Space alone while typing in the code box
@@ -1649,7 +1649,7 @@ function hazSync(){
   if(HZ.done.has(k))continue;
   const [cx,cz]=k.split(',').map(Number);
   const r=rng((Math.imul(cx,2246822519)^Math.imul(cz,3266489917)^(window._worldSeed|0)^0x6a09e1)|0);
-  if(r()>=HZ_CHANCE){HZ.done.add(k);continue}
+  if(!((cx&3)===0&&(cz&3)===0)&&r()>=HZ_CHANCE){HZ.done.add(k);continue}
   const D=chunkData(cx,cz),cells=[];
   for(let i=0;i<N*N;i++)if(D.open[i]&&!D.pit[i]&&!D.wet[i])cells.push(i);
   let sp=null;
@@ -1724,6 +1724,10 @@ function mpFindSafeSpawn(targetX,targetZ){
    if(Array.isArray(d.players))d.players.forEach(mpRememberPlayer);
    if(gameStarted){pickRandomSpawn();mpRequestSpawn('start',pl.x,pl.z)}else mpSendPendingSpawn();
   }else if(d.t==='s')mpRememberPlayer(d);
+  else if(d.t==='e'&&d.event==='corpse-stepped'){
+   // Guaranteed encounter: no random roll when a corpse is crossed.
+   if(typeof startBody==='function'&&!dead)startBody();
+  }
   else if(d.t==='p'){
    if(d.near){const pos=mpFindSafeSpawn(+d.x||0,+d.z||0);pl.x=pos.x;pl.z=pos.z;pl.yaw=Math.atan2((+d.x||0)-pl.x,(+d.z||0)-pl.z)}
    else{pl.x=Number.isFinite(+d.x)?+d.x:pl.x;pl.z=Number.isFinite(+d.z)?+d.z:pl.z;pl.yaw=Number.isFinite(+d.y)?+d.y:pl.yaw}
@@ -1751,9 +1755,32 @@ function mpTick(dt){
  for(const [id,p] of MP.peers){
   if(!p.av){p.av=mkAv();if(!p.av)continue}
   const k=Math.min(1,dt*10);p.x+=(p.tx-p.x)*k;p.z+=(p.tz-p.z)*k;p.yaw+=wrap(p.ty-p.yaw)*k;
-  const gone=p.dd||now-p.seen>5000;p.av.root.visible=!gone&&gameStarted;if(gone)continue;
-  p.av.root.position.set(p.x,0,p.z);p.av.root.rotation.y=p.yaw+Math.PI;
-  avAnim(p.av,dt,p.m,p.s);
+  const stale=now-p.seen>5000;
+  p.av.root.visible=!stale&&gameStarted;
+  if(stale)continue;
+  p.av.root.position.set(p.x,p.dd?0.08:0,p.z);
+  if(p.dd){
+   // A dead player remains as a visible body; it is not a torch pickup.
+   p.av.root.rotation.set(Math.PI/2,p.yaw+Math.PI,0);
+   p.av.root.scale.set(1,1,1);
+  }else{
+   p.av.root.rotation.set(0,p.yaw+Math.PI,0);
+   p.av.root.scale.set(1,1,1);
+   avAnim(p.av,dt,p.m,p.s);
+  }
+  // Walking over a player corpse always triggers the existing Skin Stealer.
+  // Trigger once per corpse for this client; the server relays the event so
+  // other clients also start the encounter rather than relying on chance.
+  if(!dead&&!p.dd&&false){} // keep live-player path explicit
+  if(!dead&&p.dd&&gameStarted&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.65){
+   if(!MP.corpseTriggered)MP.corpseTriggered=new Set();
+   const corpseKey=String(id);
+   if(!MP.corpseTriggered.has(corpseKey)){
+    MP.corpseTriggered.add(corpseKey);
+    if(typeof startBody==='function')startBody();
+    if(MP.ws&&MP.ws.readyState===1)MP.ws.send(JSON.stringify({t:'e',event:'corpse-stepped',x:p.x,z:p.z}));
+   }
+  }
   if(p.m&&A_()&&Math.hypot(pl.x-p.x,pl.z-p.z)<45){p.stepT-=dt;if(p.stepT<=0){p.stepT=p.s?.34:.52;playerStepSnd(p.x,p.z,!!p.s)}}}
 }
 // looted-body monster: looks like another player first, walks after you, then reveals itself
