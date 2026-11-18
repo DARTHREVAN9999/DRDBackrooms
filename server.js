@@ -306,7 +306,10 @@ wss.on('connection', (ws) => {
             x: cleanNumber(data.x), z: cleanNumber(data.z), yaw: cleanNumber(data.yaw),
             y: cleanNumber(data.y), rx: cleanNumber(data.rx), rz: cleanNumber(data.rz),
             spd: Math.max(0, Math.min(20, cleanNumber(data.spd))),
-            visible: data.visible ? 1 : 0
+            visible: data.visible ? 1 : 0,
+            appearanceId: Math.max(0, Math.floor(cleanNumber(data.appearanceId))),
+            appearance: ['blackout', 'flicker', 'silent'].includes(data.appearance) ? data.appearance : 'silent',
+            appearanceAt: Math.max(0, cleanNumber(data.appearanceAt))
           };
         }
         sharedWorld[kind] = snapshot;
