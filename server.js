@@ -18,8 +18,12 @@ let nextId = 1;
 let worldSeed = makeSeed();
 let sharedBody = null;
 const sharedAlmondPicked = new Set();
-const sharedWorld = { blackout: null, chair: null, party: null };
+const sharedTorchPicked = new Set();
+const sharedWorld = { blackout: null, chair: null, party: null, monster: null };
 const sharedBalloonPopped = new Map();
+// Player corpses remain in the current world after their owners respawn.
+const sharedCorpses = new Map();
+const MAX_SHARED_CORPSES = 5000;
 const BLACKOUT_MAX_MS = 10000;
 
 function broadcastWorldEnd(kind, from) {
@@ -44,6 +48,11 @@ function sweepWorldEvents() {
   if (party && party.active && now - (party.updatedAt || party.at || now) > 3500) {
     sharedWorld.party = null;
     broadcastWorldEnd('party', party.from);
+  }
+  const monster = sharedWorld.monster;
+  if (monster && monster.active && now - (monster.updatedAt || monster.at || now) > 3500) {
+    sharedWorld.monster = null;
+    broadcastWorldEnd('monster', monster.from);
   }
   const chair = sharedWorld.chair;
   if (chair && chair.bo && now - (chair.updatedAt || chair.at || now) > 2500) {
@@ -100,11 +109,11 @@ function nearestLivePlayer(fromX, fromZ, exceptId) {
 wss.on('connection', (ws) => {
   sweepWorldEvents();
   const id = nextId++;
-  const peer = { ws, state: null, lastNormalSoundAt: 0, lastMonsterSoundAt: { body: 0, balloon: 0 } };
+  const peer = { ws, state: null, corpseSeq: 0, lastNormalSoundAt: 0, lastMonsterSoundAt: { body: 0, balloon: 0 } };
   peers.set(id, peer);
 
   // Send the shared maze seed and the live players already in the session.
-  send(ws, { t: 'i', id, seed: worldSeed, serverNow: Date.now(), players: playerSnapshot(id), body: sharedBody && sharedBody.active ? sharedBody : null, almondPicked: Array.from(sharedAlmondPicked), world: { blackout: sharedWorld.blackout, chair: sharedWorld.chair, party: sharedWorld.party }, balloonPopped: Array.from(sharedBalloonPopped.values()) });
+  send(ws, { t: 'i', id, seed: worldSeed, serverNow: Date.now(), players: playerSnapshot(id), corpses: Array.from(sharedCorpses.values()), body: sharedBody && sharedBody.active ? sharedBody : null, almondPicked: Array.from(sharedAlmondPicked), world: { blackout: sharedWorld.blackout, chair: sharedWorld.chair, party: sharedWorld.party, monster: sharedWorld.monster }, balloonPopped: Array.from(sharedBalloonPopped.values()), torchPicked: Array.from(sharedTorchPicked) });
 
   ws.on('message', (message) => {
     let data;
@@ -125,10 +134,24 @@ wss.on('connection', (ws) => {
         s: data.s ? 1 : 0,
         d: data.d ? 1 : 0,
       };
+      const previous = peer.state;
       peer.state = state;
       const update = { t: 's', id, ...state };
       for (const [otherId, other] of peers) {
         if (otherId !== id) send(other.ws, update);
+      }
+      // A death creates a separate, permanent corpse object. The live player
+      // avatar can stand up again on respawn without replacing this body.
+      if (state.d && (!previous || !previous.d)) {
+        const corpse = {
+          t: 'c', key: `${id}:${++peer.corpseSeq}`, owner: id,
+          x: state.x, z: state.z, yaw: state.y, at: Date.now()
+        };
+        sharedCorpses.set(corpse.key, corpse);
+        while (sharedCorpses.size > MAX_SHARED_CORPSES) {
+          sharedCorpses.delete(sharedCorpses.keys().next().value);
+        }
+        for (const recipient of peers.values()) send(recipient.ws, corpse);
       }
       return;
     }
@@ -176,6 +199,19 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Torch pickups are world objects shared by every player. Once one player
+    // collects a fallen-hazmat torch, it disappears for everyone and late joiners.
+    if (data.t === 'tp' && typeof data.key === 'string') {
+      const key = data.key.slice(0, 128);
+      if (!key || sharedTorchPicked.has(key)) return;
+      sharedTorchPicked.add(key);
+      const update = { t: 'tp', key };
+      for (const [otherId, other] of peers) {
+        if (otherId !== id) send(other.ws, update);
+      }
+      return;
+    }
+
     // Shared environmental events. The initiating client owns the simulation
     // and sends compact snapshots; every other client renders the same event.
     if (data.t === 'w' && typeof data.kind === 'string') {
@@ -196,9 +232,10 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      if (!['blackout', 'chair', 'party'].includes(kind)) return;
+      if (!['blackout', 'chair', 'party', 'monster'].includes(kind)) return;
       const active = data.active ? 1 : 0;
       const current = sharedWorld[kind];
+      const firstMonsterClaim = kind === 'monster' && !(current && current.active && current.from === id);
       if (active) {
         if (current && current.active && current.from !== id) {
           send(ws, { t: 'wd', kind, denied: 1 });
@@ -251,7 +288,7 @@ wss.on('connection', (ws) => {
             tg: Math.max(0, Math.min(1, cleanNumber(data.tg, 1))),
             red: Math.max(0, Math.min(1, cleanNumber(data.red, 1)))
           };
-        } else {
+        } else if (kind === 'party') {
           const states = new Set(['pending', 'lurk', 'chase']);
           snapshot = {
             ...base,
@@ -261,17 +298,29 @@ wss.on('connection', (ws) => {
             spd: Math.max(0, Math.min(12, cleanNumber(data.spd))),
             visible: data.visible ? 1 : 0
           };
+        } else {
+          const states = new Set(['wander', 'chase', 'search', 'lost', 'dormant']);
+          snapshot = {
+            ...base,
+            state: states.has(data.state) ? data.state : 'chase',
+            x: cleanNumber(data.x), z: cleanNumber(data.z), yaw: cleanNumber(data.yaw),
+            y: cleanNumber(data.y), rx: cleanNumber(data.rx), rz: cleanNumber(data.rz),
+            spd: Math.max(0, Math.min(20, cleanNumber(data.spd))),
+            visible: data.visible ? 1 : 0
+          };
         }
         sharedWorld[kind] = snapshot;
         for (const [otherId, other] of peers) {
           if (otherId !== id) send(other.ws, snapshot);
         }
+        if (firstMonsterClaim) send(ws, { t: 'wg', kind: 'monster', granted: 1, from: id });
       } else if (current && current.active && current.from === id) {
         sharedWorld[kind] = null;
         const ended = { t: 'w', kind, active: 0, from: id };
         for (const [otherId, other] of peers) {
           if (otherId !== id) send(other.ws, ended);
         }
+        if (kind === 'monster') send(ws, { t: 'wg', kind: 'monster', granted: 0, from: id });
       }
       return;
     }
@@ -349,7 +398,7 @@ wss.on('connection', (ws) => {
       const ended = { t: 'b', active: 0, from: id };
       for (const other of peers.values()) send(other.ws, ended);
     }
-    for (const kind of ['blackout', 'chair', 'party']) {
+    for (const kind of ['blackout', 'chair', 'party', 'monster']) {
       if (sharedWorld[kind] && sharedWorld[kind].from === id) {
         sharedWorld[kind] = null;
         const ended = { t: 'w', kind, active: 0, from: id };
@@ -359,8 +408,10 @@ wss.on('connection', (ws) => {
     if (peers.size === 0) {
       worldSeed = makeSeed();
       sharedAlmondPicked.clear();
+      sharedTorchPicked.clear();
       sharedBalloonPopped.clear();
-      sharedWorld.blackout = sharedWorld.chair = sharedWorld.party = null;
+      sharedWorld.blackout = sharedWorld.chair = sharedWorld.party = sharedWorld.monster = null;
+      sharedCorpses.clear();
     }
   });
 

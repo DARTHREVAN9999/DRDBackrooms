@@ -601,7 +601,7 @@ const sbf=document.getElementById("sbf"),sbw=document.getElementById("sb");
 // Multiplayer state must exist before the initial world seed is read below.
 // Previously this const was declared at the very bottom of the file, causing
 // a temporal-dead-zone ReferenceError and stopping the whole game at startup.
-const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false,corpseTriggered:new Set(),bodyNetOwned:false,bodySyncAt:0,remoteBody:null,remoteBodyRoot:null,remoteBodyAvatar:null,chairNetOwned:false,blackoutNetOwned:false,partyNetOwned:false,worldSendT:0,remoteBlackout:null,remoteChair:null,remoteChairRoot:null,remoteChairMixer:null,remoteParty:null,remotePartyRoot:null,balloonPopped:new Set(),remoteChairWasActive:false,remoteBlackoutWasActive:false,serverOffset:0};
+const MP={seed:null,id:null,ws:null,peers:new Map(),tpl:null,clip:null,sendT:0,hz:null,spawnRequest:null,connected:false,initialized:false,corpseTriggered:new Set(),corpses:new Map(),corpseAvatars:new Map(),bodyNetOwned:false,bodySyncAt:0,remoteBody:null,remoteBodyRoot:null,remoteBodyAvatar:null,chairNetOwned:false,blackoutNetOwned:false,partyNetOwned:false,monsterNetOwned:false,monsterPending:false,worldSendT:0,remoteBlackout:null,remoteChair:null,remoteChairRoot:null,remoteChairMixer:null,remoteParty:null,remotePartyRoot:null,remoteMonster:null,remoteMonsterRoot:null,remoteMonsterMixer:null,balloonPopped:new Set(),remoteChairWasActive:false,remoteBlackoutWasActive:false,serverOffset:0};
 function mpLivePlayerTargets(){
  const list=[],now=performance.now();
  if(!dead)list.push({id:MP.id==null?'local':MP.id,x:pl.x,z:pl.z,yaw:pl.yaw,local:true});
@@ -646,7 +646,7 @@ const ALMOND={boost:0,drinkAnim:0};
 const recHudEl=document.getElementById('recHud'),recTimeEl=document.getElementById('recTime');
 function pickRandomSpawn(){
   if(typeof partyReset==='function')partyReset();if(typeof hazReset==='function')hazReset();if(typeof furnitureReset==='function')furnitureReset();
-  if(typeof bodyReset==='function')bodyReset();if(MP&&MP.corpseTriggered)MP.corpseTriggered.clear();
+  if(typeof bodyReset==='function')bodyReset();
  // Clear chunk cache so new seed takes effect on restart
  if(typeof dataC!=='undefined') dataC.clear();
  if(typeof chunks!=='undefined'){
@@ -811,7 +811,7 @@ function loop(t){
 }
 updateChunks(pl.x,pl.z,true);
 // ---- monster ----
-let dead=false,ready=false,monRoot=null,normalRoot=null,chairRoot=null,mixer=null,normalMixer=null,chairMixer=null,chairClip=null,playT=0,deadT=0,repath=0;
+let dead=false,ready=false,monRoot=null,normalRoot=null,chairRoot=null,mixer=null,normalMixer=null,chairMixer=null,chairClip=null,normalClip=null,playT=0,deadT=0,repath=0;
 const mon={on:false,x:0,z:0,path:[],pi:1},MS=7.0,MR=0.45,TRIG=18;
 let chairMode=false,chairEncountered=false,chairPhase='idle',chairPhaseT=0,chairPhaseHardStop=0,chairMonsterSpawned=false;
 const dd=document.getElementById('dead'),fl=document.getElementById('fl');
@@ -847,7 +847,7 @@ function fallbackMon(){
  if(!chairMode)monRoot=normalRoot;ready=true;
 }
 parseEmbeddedModel('mdlNew',gl=>{
- try{const a=buildMonsterRoot(gl,2.85);normalRoot=a.root;normalMixer=a.mixer;blackenMonster(normalRoot);if(!chairMode)monRoot=normalRoot;ready=true}
+ try{const a=buildMonsterRoot(gl,2.85);normalRoot=a.root;normalMixer=a.mixer;normalClip=gl.animations[0]||null;blackenMonster(normalRoot);if(!chairMode)monRoot=normalRoot;ready=true}
  catch(e){console.error(e);fallbackMon()}
 },e=>{console.error(e);fallbackMon()});
 parseEmbeddedModel('mdlOld',gl=>{
@@ -1476,7 +1476,11 @@ function finishDeath(){
  const keepParty=!!(MP.partyNetOwned&&mpHasLiveRemotePlayer());
  const keepBody=!!(MP.bodyNetOwned&&mpHasLiveRemotePlayer());
  dead=true;deadT=2;document.body.classList.remove('vhs-on');
- if(MP.ws&&MP.ws.readyState===1){mpSendWorld('blackout',{active:0});mpSendWorld('chair',{active:0});if(!keepParty)mpSendWorld('party',{active:0})}
+ if(MP.ws&&MP.ws.readyState===1){
+  MP.ws.send(JSON.stringify({t:'s',x:+pl.x.toFixed(2),z:+pl.z.toFixed(2),y:+pl.yaw.toFixed(3),m:0,s:0,d:1}));
+  mpSendWorld('blackout',{active:0});mpSendWorld('chair',{active:0});if(!keepParty)mpSendWorld('party',{active:0});
+  if(MP.monsterNetOwned){mpSendWorld('monster',{active:0});MP.monsterNetOwned=false;MP.monsterPending=false}
+ }
  MP.blackoutNetOwned=false;MP.chairNetOwned=false;
  if(!keepParty)MP.partyNetOwned=false;
  LK.bo=false;LK.tg=1;LK.red=0;blackoutPhase='idle';blackoutRemaining=0;blackoutHardStop=0;chairPhase='idle';chairPhaseT=0;chairPhaseHardStop=0;applyK();
@@ -1491,6 +1495,12 @@ function caught(){finishDeath()}
 function monsterStep(dt){
  if(dead){deadT+=dt;if(deadT>1.8&&dd.style.display!='flex'){dd.style.display='flex';document.exitPointerLock()}return}
  if(!ready||!document.pointerLockElement)return;
+ // In multiplayer, only the client granted ownership simulates the regular
+ // roaming monster. Other clients render the server's shared copy instead.
+ if(!chairMode&&MP.ws&&MP.ws.readyState===1&&MP.initialized){
+  if(MP.remoteMonster&&!MP.monsterNetOwned){if(mon.on){mon.on=false;mon.path=[];setS('wander')}if(monRoot)monRoot.visible=false;return}
+  if(mon.on&&!MP.monsterNetOwned){if(!MP.monsterPending)mpClaimNormalMonster();return}
+ }
  if(MP.remoteChair&&!MP.chairNetOwned){if(normalRoot)normalRoot.visible=false;return}
  if(!mon.on){dreadFx(dt,false,99);if(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)playT+=dt;if(playT>TRIG)spawnMon();return}
  if(AI.s=='dormant'){dreadFx(dt,false,99);monsterApparitionTick(dt);if(chairMode||keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD)AI.dT-=dt;if(AI.dT<=0){hideMonsterApparition();ambush()}return}
@@ -1559,9 +1569,9 @@ function monsterStep(dt){
   return;
  }
  wallAmbush.grace=Math.max(0,wallAmbush.grace-dt);
- if(d<1.2&&wallAmbush.phase!=='hide'&&wallAmbush.grace<=0){caught();return}
+ if(monRoot&&monRoot.visible&&d<1.2&&wallAmbush.phase!=='hide'&&wallAmbush.grace<=0){caught();return}
  const wallAmbushing=wallAmbushStep(dt,d);
- if(d<1.2&&wallAmbush.phase!=='hide'&&wallAmbush.grace<=0){caught();return}
+ if(monRoot&&monRoot.visible&&d<1.2&&wallAmbush.phase!=='hide'&&wallAmbush.grace<=0){caught();return}
  if(!wallAmbushing)think(dt,d);
  if(AI.leap>0){camera.position.x+=(Math.random()-.5)*.09;camera.position.y+=(Math.random()-.5)*.09;camera.rotation.z+=(Math.random()-.5)*.03}
  // animation
@@ -1827,7 +1837,7 @@ function despawnChair(){
 }
 
 
-// ===== BODY MONSTER (30% chance per distinct hazmat/player corpse) =====
+// ===== BODY MONSTER (50% chance per distinct hazmat/player corpse) =====
 const BODY_SPEED=7.0; // same as party; under player sprint 7.5
 const BODY={state:'idle',root:null,x:0,z:0,yaw:0,spd:0,turn:0,anim:0,path:[],pi:1,gl:null,rp:0,
  lurkT:0,seenT:0,lostT:0,farT:0,last:[0,0],pdir:[0,1],pp:[0,0],ppAcc:0,lunge:0,lungeCd:1.2,
@@ -1879,7 +1889,7 @@ function findBodySpot(target){
  const x=target.x+Math.sin(target.yaw||0)*9,z=target.z+Math.cos(target.yaw||0)*9,path=findPath(x,z,target.x,target.z);
  return path?{x,z,path}:null;
 }
-const BODY_ENCOUNTER_CHANCE=.30;
+const BODY_ENCOUNTER_CHANCE=.50;
 // Roll once per distinct corpse, rather than on every overlapping collision/update.
 function tryBodyEncounter(corpseKey){
  const key=String(corpseKey||'unknown-corpse');
@@ -1977,7 +1987,7 @@ function bodyTick(dt,active){
 const HZ_CHANCE=.035;       // rarer natural dead bodies in ordinary chunks
 const TORCH_DRAIN=1/55;     // battery used per second while the torch is on (~55 s of light per charge)
 const TORCH_SLOW=.68;       // monster speed multiplier while the beam is on them
-const HZ={bodies:new Map(),done:new Set(),taken:new Set(),tpl:null,blood:[]};
+const HZ={bodies:new Map(),done:new Set(),taken:new Set(),pending:new Set(),tpl:null,blood:[]};
 const TH={has:false,on:false,bat:1,lvl:0,raise:0,click:0,toastT:0,lagY:0,lagP:0,lyaw:0,lpit:0};
 const TS={m:1,p:1}; // speed multipliers applied to the main monster / the partygoer
 
@@ -2038,8 +2048,8 @@ function handUpdate(dt){
  if(ALMOND.drinkAnim>0&&!dead){
   ALMOND.drinkAnim=Math.max(0,ALMOND.drinkAnim-dt);
   const p=1-ALMOND.drinkAnim/1.25,e=p*p*(3-2*p);
-  waterHolder.visible=true;waterHolder.position.set(.28-.09*e,-.36+.29*e,-.66+.08*e);
-  waterHolder.rotation.set(.08+e*.82,0,-.08-e*.34);
+  waterHolder.visible=true;waterHolder.position.set(-.34+.08*e,-.36+.29*e,-.66+.08*e);
+  waterHolder.rotation.set(.08+e*.82,0,.08+e*.34);
   waterHolder.scale.setScalar(.82);
  }else waterHolder.visible=false;
  if(HC.aspect!==camera.aspect){HC.aspect=camera.aspect;HC.updateProjectionMatrix()}
@@ -2119,15 +2129,38 @@ function bloodMat(v){
  if(!HZ.blood[v])HZ.blood[v]=new THREE.MeshLambertMaterial({map:bloodTex(9100+v*77),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
  return HZ.blood[v];
 }
+function makeDroppedTorch(x,z,yaw){
+ const root=new THREE.Group();
+ const bodyMat=new THREE.MeshStandardMaterial({color:0x30343a,roughness:.48,metalness:.55});
+ const headMat=new THREE.MeshStandardMaterial({color:0x555a60,roughness:.34,metalness:.68});
+ const lensMat=new THREE.MeshStandardMaterial({color:0xb7a66b,emissive:0x4a3b18,emissiveIntensity:.42,roughness:.24,metalness:.15});
+ const tube=new THREE.Mesh(new THREE.CylinderGeometry(.038,.038,.34,14),bodyMat);tube.rotation.z=Math.PI/2;tube.position.set(0,.075,0);root.add(tube);
+ const head=new THREE.Mesh(new THREE.CylinderGeometry(.057,.045,.105,14),headMat);head.rotation.z=Math.PI/2;head.position.set(.205,.075,0);root.add(head);
+ const lens=new THREE.Mesh(new THREE.CircleGeometry(.047,16),lensMat);lens.rotation.y=Math.PI/2;lens.position.set(.26,.075,0);root.add(lens);
+ const cap=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.035,12),bodyMat);cap.rotation.z=Math.PI/2;cap.position.set(-.19,.075,0);root.add(cap);
+ const button=new THREE.Mesh(new THREE.BoxGeometry(.045,.018,.035),headMat);button.position.set(-.015,.119,0);root.add(button);
+ root.position.set(x+Math.cos(yaw)*.98,.015,z-Math.sin(yaw)*.98);root.rotation.y=yaw;scene.add(root);
+ return root;
+}
+function hazMarkTorchTaken(key,broadcast){
+ key=String(key||'');if(!key)return;
+ const first=!HZ.taken.has(key);HZ.taken.add(key);
+ const body=HZ.bodies.get(key);
+ if(body&&body.torch){scene.remove(body.torch);body.torch=null}
+ if(!broadcast||!first)return;
+ if(MP.ws&&MP.ws.readyState===1){try{MP.ws.send(JSON.stringify({t:'tp',key}))}catch(_e){HZ.pending.add(key)}}
+ else HZ.pending.add(key);
+}
 function makeBody(sp,key){
  const g=new THREE.Group(),body=HZ.tpl.clone(true);g.add(body);
  const bl=new THREE.Mesh(new THREE.PlaneGeometry(1,1),bloodMat(sp.bv));
  bl.rotation.set(-Math.PI/2,0,sp.spin);bl.position.set(0,.012,.15);bl.scale.set(sp.sc,sp.sc,1);bl.renderOrder=1;g.add(bl);
  g.position.set(sp.x,0,sp.z);g.rotation.y=sp.yaw;scene.add(g);
- return{key,x:sp.x,z:sp.z,yaw:sp.yaw,g};
+ const torch=HZ.taken.has(key)?null:makeDroppedTorch(sp.x,sp.z,sp.yaw);
+ return{key,x:sp.x,z:sp.z,yaw:sp.yaw,g,torch};
 }
 function hazSync(){
- for(const [k,b] of HZ.bodies)if(!chunks.has(k)){scene.remove(b.g);HZ.bodies.delete(k);HZ.done.delete(k)}
+ for(const [k,b] of HZ.bodies)if(!chunks.has(k)){scene.remove(b.g);if(b.torch)scene.remove(b.torch);HZ.bodies.delete(k);HZ.done.delete(k)}
  for(const k of HZ.done)if(!chunks.has(k))HZ.done.delete(k);
  if(!HZ.tpl)return;
  for(const k of chunks.keys()){
@@ -2151,21 +2184,23 @@ function hazSync(){
  }
 }
 function hazReset(){
- for(const b of HZ.bodies.values())scene.remove(b.g);
- HZ.bodies.clear();HZ.done.clear();HZ.taken.clear();
+ for(const b of HZ.bodies.values()){scene.remove(b.g);if(b.torch)scene.remove(b.torch)}
+ HZ.bodies.clear();HZ.done.clear();if(!MP.initialized)HZ.taken.clear();
  TH.has=false;TH.on=false;TH.bat=1;TH.lvl=0;TH.raise=0;TS.m=TS.p=1;TU.tI.value=0;TSPOT.intensity=0;holder.visible=false;toastEl.style.opacity=0;
  ALMOND.boost=0;ALMOND.drinkAnim=0;waterHolder.visible=false;sbw.classList.remove('almondBoost');
 }
-// walking over a body picks up its torch
+// The fallen-hazmat torch is a separate ground pickup beside the body.
+// Player-death corpses never receive a torch prop.
 function hazTick(dt,active){
  if(dead||!gameStarted||!active)return;
  hazSync();
  for(const [k,b] of HZ.bodies){
-  if(HZ.taken.has(k))continue;
+  if(b.torch&&!HZ.taken.has(k)&&Math.hypot(pl.x-b.torch.position.x,pl.z-b.torch.position.z)<.82){
+   hazMarkTorchTaken(k,true);
+   torchPickup();
+  }
   const sx=Math.sin(b.yaw),sz=Math.cos(b.yaw),px=pl.x-b.x,pz=pl.z-b.z,t=Math.max(-.85,Math.min(.85,px*sx+pz*sz));
   if(Math.hypot(px-sx*t,pz-sz*t)<.85){
-   HZ.taken.add(k);
-   torchPickup();
    tryBodyEncounter('natural:'+String(window._worldSeed|0)+':'+String(k));
   }
  }
@@ -2184,6 +2219,13 @@ function mpSendWorld(kind, data={}){
  if(!MP.ws||MP.ws.readyState!==1)return;
  try{MP.ws.send(JSON.stringify({t:'w',kind,...data}))}catch(_e){}
 }
+function mpClaimNormalMonster(){
+ if(MP.monsterPending||MP.monsterNetOwned||MP.remoteMonster||!MP.ws||MP.ws.readyState!==1)return;
+ MP.monsterPending=true;
+ mpSendWorld('monster',{active:1,state:AI.s,x:mon.x,z:mon.z,yaw:monRoot?monRoot.rotation.y:AI.yaw,
+  y:monRoot?monRoot.position.y:0,rx:monRoot?monRoot.rotation.x:0,rz:monRoot?monRoot.rotation.z:0,
+  spd:AI.spd,visible:!!(monRoot&&monRoot.visible)});
+}
 function mpApplyWorld(d){
  if(!d||!d.kind)return;
  if(d.kind==='blackout'){
@@ -2199,6 +2241,11 @@ function mpApplyWorld(d){
    if(!MP.remoteParty||MP.remoteParty.from!==d.from)MP.remoteParty={...d,x:+d.x||0,z:+d.z||0,tx:+d.x||0,tz:+d.z||0,yaw:+d.yaw||0,tyaw:+d.yaw||0,seen:performance.now()};
    else{const q=MP.remoteParty;q.state=d.state;q.tx=+d.x||0;q.tz=+d.z||0;q.tyaw=+d.yaw||0;q.rx=+d.rx||0;q.rz=+d.rz||0;q.spd=+d.spd||0;q.visible=!!d.visible;q.seen=performance.now();}
   }else if(!MP.remoteParty||d.from==null||MP.remoteParty.from===d.from){MP.remoteParty=null;if(MP.remotePartyRoot)MP.remotePartyRoot.visible=false;}
+ }else if(d.kind==='monster'){
+  if(d.active){if(d.from===MP.id)return;
+   if(!MP.remoteMonster||MP.remoteMonster.from!==d.from)MP.remoteMonster={...d,x:+d.x||0,z:+d.z||0,tx:+d.x||0,tz:+d.z||0,yaw:+d.yaw||0,tyaw:+d.yaw||0,seen:performance.now(),born:performance.now()};
+   else{const q=MP.remoteMonster;q.state=d.state;q.tx=+d.x||0;q.tz=+d.z||0;q.tyaw=+d.yaw||0;q.y=+d.y||0;q.rx=+d.rx||0;q.rz=+d.rz||0;q.spd=+d.spd||0;q.visible=!!d.visible;q.seen=performance.now();}
+  }else if(!MP.remoteMonster||d.from==null||MP.remoteMonster.from===d.from){MP.remoteMonster=null;if(MP.remoteMonsterRoot)MP.remoteMonsterRoot.visible=false;}
  }
 }
 function mpApplyBalloonPop(d){
@@ -2231,6 +2278,37 @@ function mpWorldTick(dt){
    spd:PARTY.spd,visible:!!(PARTY.root&&PARTY.root.visible)}:{active:0});
   if(!active)MP.partyNetOwned=false;
  }
+ if(MP.monsterNetOwned){
+  const active=!!mon.on&&!chairMode;
+  mpSendWorld('monster',active?{active:1,state:AI.s,x:mon.x,z:mon.z,yaw:monRoot?monRoot.rotation.y:AI.yaw,
+   y:monRoot?monRoot.position.y:0,rx:monRoot?monRoot.rotation.x:0,rz:monRoot?monRoot.rotation.z:0,
+   spd:AI.spd,visible:!!(monRoot&&monRoot.visible)}:{active:0});
+  if(!active){MP.monsterNetOwned=false;MP.monsterPending=false;}
+ }
+}
+function mpFallbackRemoteEnemy(tint=0x080808){
+ const root=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:tint,roughness:.92,metalness:0,side:THREE.DoubleSide});
+ const limb=(w,h,d,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);root.add(m)};
+ limb(.82,1.35,.42,0,1.48,0);limb(.52,.58,.48,0,2.43,0);
+ limb(.22,1.25,.22,-.53,1.48,0);limb(.22,1.25,.22,.53,1.48,0);
+ limb(.25,1.0,.27,-.22,.48,0);limb(.25,1.0,.27,.22,.48,0);
+ const eyeMat=new THREE.MeshBasicMaterial({color:0xb20d12});
+ for(const x of [-.14,.14]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),eyeMat);eye.position.set(x,2.49,.245);root.add(eye)}
+ root.userData.mpFallback=true;root.visible=false;
+ return root;
+}
+function mpCloneRemoteEnemy(source,tint=0x080808){
+ let root=null;
+ try{if(source)root=THREE.SkeletonUtils?THREE.SkeletonUtils.clone(source):source.clone(true)}catch(e){console.warn('Remote monster model clone failed; using visible fallback',e)}
+ if(!root)root=mpFallbackRemoteEnemy(tint);
+ root.visible=false;
+ root.traverse(o=>{if(o.isMesh){o.frustumCulled=false;o.visible=true}});
+ scene.add(root);
+ return root;
+}
+function mpRemoteEnemyMixer(root,clip){
+ if(!root||!clip||root.userData.mpFallback)return null;
+ try{const mixer=new THREE.AnimationMixer(root.children[0]||root);mixer.clipAction(clip).play();return mixer}catch(e){console.warn('Remote monster animation unavailable',e);return null}
 }
 function mpRemoteWorldTick(dt){
  // Treat a missing/stale owner heartbeat as an ended blackout. The server also
@@ -2248,20 +2326,40 @@ function mpRemoteWorldTick(dt){
 
  const c=MP.remoteChair;
  if(c){
-  // Chair events only use a very short dark phase. If the owner stops
-  // transmitting while that phase is active, restore lighting after 2.5s.
   if(c.bo&&performance.now()-(c.seen||0)>2500){c.bo=false;c.tg=1;c.red=0;c.phase='return';if(!MP.chairNetOwned){LK.bo=false;LK.tg=1;LK.red=0;applyK()}}
   MP.remoteChairWasActive=true;
   if(!MP.chairNetOwned){LK.red=Number.isFinite(+c.red)?+c.red:1;LK.bo=!!c.bo;LK.tg=Number.isFinite(+c.tg)?+c.tg:1;applyK()}
-  if(!MP.remoteChairRoot&&chairRoot&&THREE.SkeletonUtils){try{MP.remoteChairRoot=THREE.SkeletonUtils.clone(chairRoot);MP.remoteChairRoot.visible=false;scene.add(MP.remoteChairRoot);if(chairClip){MP.remoteChairMixer=new THREE.AnimationMixer(MP.remoteChairRoot.children[0]);MP.remoteChairMixer.clipAction(chairClip).play()}}catch(e){console.warn('Could not clone shared chair monster',e)}}
-  if(MP.remoteChairRoot){const r=MP.remoteChairRoot,k=Math.min(1,dt*15);c.x+=(c.tx-c.x)*k;c.z+=(c.tz-c.z)*k;c.yaw+=wrap(c.tyaw-c.yaw)*k;r.visible=!!c.visible&&gameStarted;r.position.set(c.x,0,c.z);r.rotation.set(c.rx||0,c.yaw,c.rz||0);if(MP.remoteChairMixer){MP.remoteChairMixer.timeScale=c.spd>.5?1.4:.35;MP.remoteChairMixer.update(dt)}}
+  if(!MP.remoteChairRoot){const chairSource=chairRoot||normalRoot||monRoot;MP.remoteChairRoot=mpCloneRemoteEnemy(chairSource,0x090909);if(MP.remoteChairRoot)MP.remoteChairRoot.userData.mpUsesChairClip=chairSource===chairRoot;}
+  if(MP.remoteChairRoot){const r=MP.remoteChairRoot,k=Math.min(1,dt*15);c.x+=(c.tx-c.x)*k;c.z+=(c.tz-c.z)*k;c.yaw+=wrap(c.tyaw-c.yaw)*k;
+   r.visible=!!c.visible&&gameStarted;r.position.set(c.x,0,c.z);r.rotation.set(c.rx||0,c.yaw,c.rz||0);
+   if(!MP.remoteChairMixer&&chairClip&&!r.userData.mpFallback&&r.userData.mpUsesChairClip)MP.remoteChairMixer=mpRemoteEnemyMixer(r,chairClip);
+   if(MP.remoteChairMixer){MP.remoteChairMixer.timeScale=c.spd>.5?1.4:.35;MP.remoteChairMixer.update(dt)}
+   // A remote chair monster can catch any nearby living player once its reveal phase ends.
+   if(r.visible&&c.phase!=='red'&&c.phase!=='dark'&&!dead&&Math.hypot(pl.x-c.x,pl.z-c.z)<1.25){caught();return}
+  }
  }else if(MP.remoteChairWasActive){MP.remoteChairWasActive=false;if(MP.remoteChairRoot)MP.remoteChairRoot.visible=false;if(!MP.remoteBlackout&&!MP.blackoutNetOwned&&!MP.chairNetOwned){LK.red=0;LK.bo=false;LK.tg=1;applyK()}}
 
  const q=MP.remoteParty;
  if(q){
-  if(!MP.remotePartyRoot&&PARTY.root&&THREE.SkeletonUtils){try{MP.remotePartyRoot=THREE.SkeletonUtils.clone(PARTY.root);MP.remotePartyRoot.visible=false;scene.add(MP.remotePartyRoot)}catch(e){console.warn('Could not clone shared Partygoer',e)}}
-  if(MP.remotePartyRoot){const r=MP.remotePartyRoot,k=Math.min(1,dt*15);q.x+=(q.tx-q.x)*k;q.z+=(q.tz-q.z)*k;q.yaw+=wrap(q.tyaw-q.yaw)*k;r.visible=!!q.visible&&q.state!=='pending'&&gameStarted;r.position.set(q.x,0,q.z);r.rotation.set(q.rx||0,q.yaw,q.rz||0);if(q.state==='chase'&&!dead&&Math.hypot(pl.x-q.x,pl.z-q.z)<1.2){caught();return}}
+  if(!MP.remotePartyRoot)MP.remotePartyRoot=mpCloneRemoteEnemy(PARTY.root,0xb49b18);
+  if(MP.remotePartyRoot){const r=MP.remotePartyRoot,k=Math.min(1,dt*15);q.x+=(q.tx-q.x)*k;q.z+=(q.tz-q.z)*k;q.yaw+=wrap(q.tyaw-q.yaw)*k;r.visible=!!q.visible&&q.state!=='pending'&&gameStarted;r.position.set(q.x,0,q.z);r.rotation.set(q.rx||0,q.yaw,q.rz||0);
+   if(q.state==='chase'&&r.visible&&!dead&&Math.hypot(pl.x-q.x,pl.z-q.z)<1.2){caught();return}}
  }else if(MP.remotePartyRoot)MP.remotePartyRoot.visible=false;
+
+ // Render the regular roaming monster from the owner's shared snapshots. A
+ // simple visible stand-in is used immediately if the model asset is not ready.
+ const nm=MP.remoteMonster;
+ if(nm&&performance.now()-(nm.seen||0)>3500){MP.remoteMonster=null;if(MP.remoteMonsterRoot)MP.remoteMonsterRoot.visible=false;}
+ if(MP.remoteMonster){
+  if(!MP.remoteMonsterRoot)MP.remoteMonsterRoot=mpCloneRemoteEnemy(normalRoot||monRoot,0x080808);
+  const n=MP.remoteMonster,r=MP.remoteMonsterRoot;
+  if(r){const k=Math.min(1,dt*16);n.x+=(n.tx-n.x)*k;n.z+=(n.tz-n.z)*k;n.yaw+=wrap(n.tyaw-n.yaw)*k;
+   r.visible=!!n.visible&&n.state!=='dormant'&&gameStarted;r.position.set(n.x,Number(n.y)||0,n.z);r.rotation.set(n.rx||0,n.yaw,n.rz||0);
+   if(!MP.remoteMonsterMixer&&normalClip&&!r.userData.mpFallback)MP.remoteMonsterMixer=mpRemoteEnemyMixer(r,normalClip);
+   if(MP.remoteMonsterMixer){MP.remoteMonsterMixer.timeScale=n.spd>.5?1.4:.35;MP.remoteMonsterMixer.update(dt)}
+   if(n.state==='chase'&&r.visible&&!dead&&Math.hypot(pl.x-n.x,pl.z-n.z)<1.2){caught();return}
+  }
+ }else if(MP.remoteMonsterRoot)MP.remoteMonsterRoot.visible=false;
 }
 
 // One client simulates the Skin Stealer encounter; the server relays snapshots
@@ -2289,8 +2387,8 @@ function mpSetRemoteBody(d){
  }else{MP.remoteBody.tx=Number.isFinite(+d.x)?+d.x:MP.remoteBody.tx;MP.remoteBody.tz=Number.isFinite(+d.z)?+d.z:MP.remoteBody.tz;MP.remoteBody.tyaw=Number.isFinite(+d.yaw)?+d.yaw:MP.remoteBody.tyaw;MP.remoteBody.spd=+d.spd||0;MP.remoteBody.rx=+d.rx||0;MP.remoteBody.rz=+d.rz||0;MP.remoteBody.hidden=!!d.hidden;MP.remoteBody.seen=performance.now()}
 }
 function mpCreateRemoteBodyRoot(){
- if(MP.remoteBodyRoot||!BODY.root||!THREE.SkeletonUtils)return;
- try{MP.remoteBodyRoot=THREE.SkeletonUtils.clone(BODY.root);MP.remoteBodyRoot.visible=false;scene.add(MP.remoteBodyRoot)}catch(e){console.warn('Could not clone shared body monster model',e)}
+ if(MP.remoteBodyRoot)return;
+ MP.remoteBodyRoot=mpCloneRemoteEnemy(BODY.root,0x151515);
 }
 function mpRemoteBodyTick(dt){
  const d=MP.remoteBody;if(!d)return;
@@ -2306,8 +2404,14 @@ function mpRemoteBodyTick(dt){
   if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;
   if(!MP.remoteBodyRoot)mpCreateRemoteBodyRoot();
   if(MP.remoteBodyRoot){const r=MP.remoteBodyRoot;r.visible=true;r.position.set(d.x,0,d.z);r.rotation.set(d.rx,d.yaw,d.rz)}
-  if(d.state==='chase'&&!dead&&Math.hypot(pl.x-d.x,pl.z-d.z)<1.25){caught();return}
+  if(d.state==='chase'&&MP.remoteBodyRoot&&MP.remoteBodyRoot.visible&&!dead&&Math.hypot(pl.x-d.x,pl.z-d.z)<1.25){caught();return}
  }
+}
+function mpAddCorpse(d){
+ if(!d||typeof d.key!=='string'||!d.key||MP.corpses.has(d.key))return;
+ const corpse={key:d.key,owner:d.owner,x:Number.isFinite(+d.x)?+d.x:0,z:Number.isFinite(+d.z)?+d.z:0,yaw:Number.isFinite(+d.yaw)?+d.yaw:0,at:+d.at||Date.now()};
+ MP.corpses.set(corpse.key,corpse);
+ if(MP.corpses.size>5000){const oldest=MP.corpses.keys().next().value;MP.corpses.delete(oldest);const av=MP.corpseAvatars.get(oldest);if(av){scene.remove(av.root);MP.corpseAvatars.delete(oldest)}}
 }
 function mpRememberPlayer(d){
  if(!d||d.id==null||d.id===MP.id)return;
@@ -2346,20 +2450,29 @@ function mpFindSafeSpawn(targetX,targetZ){
    window._worldSeed=MP.seed;
    if(FURN.seed!==(window._worldSeed|0))furnitureReset();
    if(Array.isArray(d.almondPicked))d.almondPicked.forEach(k=>{if(typeof k==='string')FURN.picked.add(k)});
+   if(Array.isArray(d.torchPicked))d.torchPicked.forEach(k=>{if(typeof k==='string')hazMarkTorchTaken(k,false)});
    if(Array.isArray(d.players))d.players.forEach(mpRememberPlayer);
+   if(Array.isArray(d.corpses))d.corpses.forEach(mpAddCorpse);
    if(d.body&&d.body.active)mpSetRemoteBody(d.body);
    if(Array.isArray(d.balloonPopped))d.balloonPopped.forEach(v=>{if(v&&typeof v.key==='string'){MP.balloonPopped.add(v.key);PARTY.popped.add(v.key)}});
-   if(d.world){if(d.world.blackout)mpApplyWorld(d.world.blackout);if(d.world.chair)mpApplyWorld(d.world.chair);if(d.world.party)mpApplyWorld(d.world.party)}
+   if(d.world){if(d.world.blackout)mpApplyWorld(d.world.blackout);if(d.world.chair)mpApplyWorld(d.world.chair);if(d.world.party)mpApplyWorld(d.world.party);if(d.world.monster)mpApplyWorld(d.world.monster)}
    if(gameStarted){pickRandomSpawn();mpRequestSpawn('start',pl.x,pl.z)}else mpSendPendingSpawn();
   }else if(d.t==='s')mpRememberPlayer(d);
+  else if(d.t==='c')mpAddCorpse(d);
+  else if(d.t==='wg'&&d.kind==='monster'){
+   MP.monsterPending=false;MP.monsterNetOwned=!!d.granted;
+   if(!d.granted){mon.on=false;mon.path=[];if(monRoot)monRoot.visible=false;setS('wander')}
+  }
   else if(d.t==='ms')playNormalMonsterSnippet(d);
   else if(d.t==='xs'&&(d.kind==='body'||d.kind==='balloon'))playSharedMonsterSnippet(d.kind,d);
   else if(d.t==='a'&&typeof d.key==='string')almondMarkPicked(d.key,false);
+  else if(d.t==='tp'&&typeof d.key==='string')hazMarkTorchTaken(d.key,false);
   else if(d.t==='w'){if(d.kind==='balloon-pop')mpApplyBalloonPop(d);else mpApplyWorld(d)}
   else if(d.t==='wd'&&d.denied){
    if(d.kind==='blackout'){MP.blackoutNetOwned=false;resetBlackoutLights(false)}
    else if(d.kind==='chair'){MP.chairNetOwned=false;chairEncountered=false;chairPhase='idle';chairPhaseT=0;LK.red=0;LK.bo=false;LK.tg=1;applyK()}
    else if(d.kind==='party'){MP.partyNetOwned=false;partyHide()}
+   else if(d.kind==='monster'){MP.monsterPending=false;MP.monsterNetOwned=false;mon.on=false;mon.path=[];if(monRoot)monRoot.visible=false;setS('wander')}
   }else if(d.t==='e'&&d.event==='corpse-stepped'){
    // The player who triggered the corpse owns the encounter and streams its
    // monster state. Do not create a separate local monster on every client.
@@ -2374,7 +2487,7 @@ function mpFindSafeSpawn(targetX,targetZ){
    const p=MP.peers.get(d.id);if(p&&p.av)scene.remove(p.av.root);MP.peers.delete(d.id);
   }
  };
- ws.onclose=()=>{MP.connected=false;MP.remoteBlackout=null;MP.remoteChair=null;MP.remoteParty=null;if(MP.remoteChairRoot)MP.remoteChairRoot.visible=false;if(MP.remotePartyRoot)MP.remotePartyRoot.visible=false;for(const p of MP.peers.values())if(p.av)scene.remove(p.av.root);MP.peers.clear()};
+ ws.onclose=()=>{MP.connected=false;MP.monsterNetOwned=false;MP.monsterPending=false;MP.remoteBlackout=null;MP.remoteChair=null;MP.remoteParty=null;MP.remoteMonster=null;if(MP.remoteChairRoot)MP.remoteChairRoot.visible=false;if(MP.remotePartyRoot)MP.remotePartyRoot.visible=false;if(MP.remoteMonsterRoot)MP.remoteMonsterRoot.visible=false;for(const p of MP.peers.values())if(p.av)scene.remove(p.av.root);MP.peers.clear()};
  ws.onerror=()=>{MP.connected=false};
 }catch(e){console.warn('Multiplayer connection unavailable; continuing in offline mode.',e)}})();
 new THREE.GLTFLoader().load('hazmat.glb',gl=>{try{MP.tpl=buildMonsterRoot(gl,1.8).root;scene.remove(MP.tpl);MP.clip=gl.animations[0]||null}catch(e){console.error(e)}},undefined,e=>console.error('hazmat.glb failed',e));
@@ -2388,36 +2501,33 @@ function avAnim(av,dt,moving,sprint){if(!av.act)return;
 function mpTick(dt){
  const now=performance.now();
  if(MP.ws&&MP.ws.readyState===1&&FURN.pending.size){for(const key of FURN.pending){try{MP.ws.send(JSON.stringify({t:'a',key}));FURN.pending.delete(key)}catch(_e){break}}}
+ if(MP.ws&&MP.ws.readyState===1&&HZ.pending.size){for(const key of HZ.pending){try{MP.ws.send(JSON.stringify({t:'tp',key}));HZ.pending.delete(key)}catch(_e){break}}}
  if(MP.ws&&MP.ws.readyState===1&&gameStarted){MP.sendT-=dt;if(MP.sendT<=0){MP.sendT=.08;
   MP.ws.send(JSON.stringify({t:'s',x:+pl.x.toFixed(2),z:+pl.z.toFixed(2),y:+pl.yaw.toFixed(3),m:pl.amp>.3?1:0,s:pl.sprint?1:0,d:dead?1:0}))}}
  for(const [id,p] of MP.peers){
   if(!p.av){p.av=mkAv();if(!p.av)continue}
   const k=Math.min(1,dt*10);p.x+=(p.tx-p.x)*k;p.z+=(p.tz-p.z)*k;p.yaw+=wrap(p.ty-p.yaw)*k;
   const stale=now-p.seen>5000;
-  p.av.root.visible=!stale&&gameStarted;
-  if(stale)continue;
-  p.av.root.position.set(p.x,p.dd?0.08:0,p.z);
-  if(p.dd){
-   // A dead player remains as a visible body; it is not a torch pickup.
-   p.av.root.rotation.set(Math.PI/2,p.yaw+Math.PI,0);
-   p.av.root.scale.set(1,1,1);
-  }else{
-   p.av.root.rotation.set(0,p.yaw+Math.PI,0);
-   p.av.root.scale.set(1,1,1);
-   avAnim(p.av,dt,p.m,p.s);
-  }
-  // Each player corpse can be checked only once per death. A later death by
-  // the same player receives a new epoch and is treated as a new corpse.
-  if(!dead&&p.dd&&gameStarted&&Math.hypot(pl.x-p.x,pl.z-p.z)<1.65){
-   if(!MP.corpseTriggered)MP.corpseTriggered=new Set();
-   const corpseKey='player:'+String(id)+':'+String(p.corpseEpoch||1);
-   if(!MP.corpseTriggered.has(corpseKey)){
-    MP.corpseTriggered.add(corpseKey);
-    const triggered=typeof tryBodyEncounter==='function'&&tryBodyEncounter(corpseKey);
-    if(triggered&&MP.ws&&MP.ws.readyState===1)MP.ws.send(JSON.stringify({t:'e',event:'corpse-stepped',x:p.x,z:p.z}));
-   }
-  }
+  // Dead players are represented by a separate persistent corpse object, not
+  // by this live avatar; respawning therefore cannot make the corpse stand up.
+  p.av.root.visible=!stale&&gameStarted&&!p.dd;
+  if(stale||p.dd)continue;
+  p.av.root.position.set(p.x,0,p.z);
+  p.av.root.rotation.set(0,p.yaw+Math.PI,0);
+  p.av.root.scale.set(1,1,1);
+  avAnim(p.av,dt,p.m,p.s);
   if(p.m&&A_()&&Math.hypot(pl.x-p.x,pl.z-p.z)<45){p.stepT-=dt;if(p.stepT<=0){p.stepT=p.s?.34:.52;playerStepSnd(p.x,p.z,!!p.s)}}}
+ // Permanent player corpses are independent of the player's current avatar state.
+ for(const [key,c] of MP.corpses){
+  let av=MP.corpseAvatars.get(key);
+  if(!av){av=mkAv();if(av)MP.corpseAvatars.set(key,av)}
+  if(av){av.root.visible=gameStarted;av.root.position.set(c.x,0.08,c.z);av.root.rotation.set(Math.PI/2,(c.yaw||0)+Math.PI,0);av.root.scale.set(1,1,1)}
+  if(!dead&&gameStarted&&Math.hypot(pl.x-c.x,pl.z-c.z)<1.65&&!MP.corpseTriggered.has(key)){
+   MP.corpseTriggered.add(key);
+   const triggered=typeof tryBodyEncounter==='function'&&tryBodyEncounter(key);
+   if(triggered&&MP.ws&&MP.ws.readyState===1)MP.ws.send(JSON.stringify({t:'e',event:'corpse-stepped',x:c.x,z:c.z}));
+  }
+ }
  mpRemoteBodyTick(dt);
 }
 // looted-body monster: looks like another player first, walks after you, then reveals itself
