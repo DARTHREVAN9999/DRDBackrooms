@@ -72,3 +72,7 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 - Solo respawns choose a fresh random safe location; when another living player is online, the existing nearest-player spawn behaviour remains in effect.
 - The survival timer is displayed in the upper-left with a red recording indicator. It pauses when the game is paused and the death screen reports the final run time.
 - A subtle VHS scanline, tracking and screen-jitter overlay is enabled while the player is alive.
+
+## Textures
+
+The wall, floor and ceiling textures are rebuilt from the *Backrooms Another Level* GLB (Huuxloc, CC-BY-4.0, https://sketchfab.com/3d-models/backrooms-another-level-429f3c9ea8024f5e9bb78f6649c7bd26): staggered-bar yellow wallpaper, smooth warm carpet and square ceiling tiles with dark seams. They are embedded in `public/index.html` (`wallTex`, `carpetTex`, `ceilTex`). Room generation, lighting, pits and pillars are unchanged.
