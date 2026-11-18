@@ -804,9 +804,9 @@ function loop(t){
  const cy=Math.cos(pl.yaw),sy=Math.sin(pl.yaw);
  camera.position.set(pl.x+cy*sway,1.8+bob,pl.z-sy*sway);
  camera.rotation.set(pl.pitch,pl.yaw,Math.sin(pl.phase)*0.012*pl.amp);
- lamp.position.set(pl.x,3,pl.z);if(gameStarted&&!dead){flick(t/1000);blackoutTick(dt)}
- if(!LEVEL2.active){monsterStep(dt);partyTick(dt,active);bodyTick(dt,active);}else{if(monRoot)monRoot.visible=false;if(normalRoot)normalRoot.visible=false;}torchFrame(dt,active);hallTick(dt);audioTick(dt);mpTick(dt);mpWorldTick(dt);mpRemoteWorldTick(dt);
- if(LEVEL2.active){updateChunksL2();l2MonsterTick(dt);}else{updateChunks(pl.x,pl.z);furnitureSync();almondWorldTick(active);}l2DoorTick();
+ lamp.position.set(pl.x,3,pl.z);if(active)chairExploreTick(dt);if(gameStarted&&!dead){chairSequenceTick(dt);flick(t/1000);blackoutTick(dt)}
+ monsterStep(dt);partyTick(dt,active);bodyTick(dt,active);torchFrame(dt,active);hallTick(dt);audioTick(dt);mpTick(dt);mpWorldTick(dt);mpRemoteWorldTick(dt);
+ updateChunks(pl.x,pl.z);furnitureSync();almondWorldTick(active);
  renderer.autoClear=false;renderer.clear();renderer.render(scene,camera);handRender();
 }
 updateChunks(pl.x,pl.z,true);
@@ -1180,7 +1180,6 @@ function createChairAt(x,z){
  g.position.set(x,0,z);scene.add(g);chairMesh=g;chairPosition=[x,z];chairSpawned=true;
 }
 function chairExploreTick(dt){
- return;
  if(chairEncountered||chairPhase!=='idle'||(MP.remoteChair&&!MP.chairNetOwned)||!document.pointerLockElement)return;
  if(!chairSpawned){
   // Roll once when the player first enters each 64m world chunk. The chair
@@ -1203,7 +1202,7 @@ function chairExploreTick(dt){
 }
 
 // ===== DESKS, BOOKSHELVES + ALMOND WATER =====
-const FURN_CHANCE=.34; // More frequent desks and bookshelves in ordinary world chunks.
+const FURN_CHANCE=.18; // A furniture piece appears in about 18% of ordinary chunks; each type averages ~9%, well above 3.5% balloon/body spawns.
 const FURN_WOOD=new THREE.MeshStandardMaterial({color:0x51402d,roughness:.94});
 const FURN_DARK=new THREE.MeshStandardMaterial({color:0x30271f,roughness:.98});
 const FURN_SHELF=new THREE.MeshStandardMaterial({color:0x433529,roughness:.96});
@@ -1229,47 +1228,6 @@ function createBottleVisual(parent){
  root.scale.setScalar(1.16);
  return root;
 }
-
-// ===== LEVEL 2: INFINITE UNDERGROUND CAR PARK =====
-const LEVEL2={active:false,tiles:new Map(),doors:[],room:null,lastDoorRoll:0,monster:null,monsterTimer:12,roomReturn:null};
-const L2_TILE=42;
-const l2FloorMat=new THREE.MeshStandardMaterial({color:0x555657,roughness:.96}),l2WallMat=new THREE.MeshStandardMaterial({color:0xb8b9b8,roughness:.9}),l2BandMat=new THREE.MeshStandardMaterial({color:0x454647,roughness:.95}),l2PillarMat=new THREE.MeshStandardMaterial({color:0x777979,roughness:.85}),l2StripeMat=new THREE.MeshStandardMaterial({color:0xaaa05b,roughness:.9}),l2MetalMat=new THREE.MeshStandardMaterial({color:0x555b60,metalness:.65,roughness:.55});
-const l2RoomMat=new THREE.MeshStandardMaterial({color:0xd0d0cc,roughness:.92});
-function l2Box(parent,w,h,d,x,y,z,mat){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);parent.add(m);return m}
-function l2BuildTile(tx,tz){const key=tx+','+tz;if(LEVEL2.tiles.has(key))return;const g=new THREE.Group(),ox=tx*L2_TILE,oz=tz*L2_TILE;
- l2Box(g,L2_TILE,.18,L2_TILE,ox,-.1,oz,l2FloorMat);l2Box(g,L2_TILE,.35,L2_TILE,ox,4.8,oz,l2WallMat);
- // Open-sided garage bays connect seamlessly into neighbouring infinite tiles.
- // Long rows of pillars with black/yellow hazard stripes at their bases.
- for(let x=-1;x<=1;x++)for(let z=-1;z<=1;z++){if(x===0&&z===0)continue;const px=ox+x*12,pz=oz+z*12;l2Box(g,1.15,4.6,1.15,px,2.3,pz,l2PillarMat);l2Box(g,1.2,.95,1.2,px,.48,pz,l2StripeMat);for(let k=0;k<4;k++){const stripe=l2Box(g,.22,.98,1.22,px-0.45+k*.3,.48,pz,new THREE.MeshStandardMaterial({color:k%2?0x171717:0xd1c85c}));stripe.rotation.y=.2}}
- // Red fire/sprinkler pipes and ceiling beams.
- l2Box(g,L2_TILE,.12,.16,ox,4.45,oz,l2MetalMat);l2Box(g,.14,.12,L2_TILE,ox,4.35,oz,l2MetalMat);
- scene.add(g);LEVEL2.tiles.set(key,g);
- // Occasional metal service-room door placed within the open garage.
- if(Math.random()<.42){const doorX=ox+(Math.random()-.5)*25,doorZ=oz+(Math.random()-.5)*25;l2CreateDoor(doorX,doorZ,'z',true)}
-}
-function l2CreateDoor(x,z,axis,metal){const group=new THREE.Group();group.position.set(x,0,z);const panel=l2Box(group,axis==='z'?1.65:.14,2.55,axis==='z'?.14:1.65,0,1.28,0,metal?l2MetalMat:l2WallMat);const frameMat=l2MetalMat;for(const a of [-.9,.9])l2Box(group,axis==='z'?.12:2.0,2.8,axis==='z'?2.0:.12,axis==='z'?a:0,1.4,axis==='z'?0:a,frameMat);scene.add(group);const d={group,panel,x,z,axis,metal,open:false,used:false};LEVEL2.doors.push(d);return d}
-function l2Clear(){for(const g of LEVEL2.tiles.values())scene.remove(g);LEVEL2.tiles.clear();for(const d of LEVEL2.doors)scene.remove(d.group);LEVEL2.doors=[];if(LEVEL2.room){scene.remove(LEVEL2.room);LEVEL2.room=null}if(LEVEL2.monster){scene.remove(LEVEL2.monster.root);LEVEL2.monster=null}}
-function l2BuildRoom(){if(LEVEL2.room)scene.remove(LEVEL2.room);const g=new THREE.Group();l2Box(g,20,.2,18,0,-.1,0,l2FloorMat);l2Box(g,20,.2,18,0,4.2,0,l2RoomMat);for(const [x,z,w,d] of [[0,-9,20,.25],[0,9,20,.25],[-10,0,.25,18],[10,0,.25,18]])l2Box(g,w,4.2,d,x,2,z,l2RoomMat);l2Box(g,1.2,3,.16,0,1.5,-8.85,l2MetalMat);
- // Industrial machinery and metal desks, matching the reference room.
- for(let i=0;i<3;i++){const x=-6+i*6;l2Box(g,2.2,1.15,1.1,x,.58,-3,l2MetalMat);l2Box(g,2.35,.12,1.2,x,1.2,-3,l2PillarMat);l2Box(g,.18,1.8,.18,x-.8,2.1,2,l2MetalMat);l2Box(g,.18,1.8,.18,x+.8,2.1,2,l2MetalMat);l2Box(g,1.8,.12,.18,x,3,2,l2MetalMat);if(Math.random()<.38){const bottle=createBottleVisual(g);bottle.position.set(x+.35,1.29,-3)}}
- // A few dead bodies as dark, inert shapes (never active monsters).
- if(Math.random()<.55){const bodyMat=new THREE.MeshStandardMaterial({color:0x343638,roughness:1});const b=l2Box(g,.48,.2,1.55,Math.random()*8-4,.12,Math.random()*8-4,bodyMat);b.rotation.y=Math.random()*Math.PI}
- scene.add(g);LEVEL2.room=g;pl.x=0;pl.z=5;pl.yaw=Math.PI;l2CreateDoor(0,8.65,'z',true);}
-function l2Enter(){LEVEL2.active=true;LEVEL2.roomReturn=null;for(const g of chunks.values())g.visible=false;for(const e of FURN.byChunk.values())e.group.visible=false;for(const item of FURN.items.values())if(item.root)item.root.visible=false;pl.x=0;pl.z=0;pl.yaw=0;updateChunksL2();}
-function updateChunksL2(){const tx=Math.floor(pl.x/L2_TILE),tz=Math.floor(pl.z/L2_TILE);for(let x=tx-1;x<=tx+1;x++)for(let z=tz-1;z<=tz+1;z++)l2BuildTile(x,z);for(const [k,g] of LEVEL2.tiles){const [x,z]=k.split(',').map(Number);if(Math.abs(x-tx)>2||Math.abs(z-tz)>2){scene.remove(g);LEVEL2.tiles.delete(k)}}}
-function l2Exit(){LEVEL2.active=false;l2Clear();for(const g of chunks.values())g.visible=true;for(const e of FURN.byChunk.values())e.group.visible=true;for(const item of FURN.items.values())if(item.root)item.root.visible=true;pl.x=LEVEL2.roomReturn?.x??33;pl.z=LEVEL2.roomReturn?.z??33;pl.yaw=LEVEL2.roomReturn?.yaw??0;}
-function l2SpawnDisguise(){if(LEVEL2.monster||!LEVEL2.active||LEVEL2.room)return;const g=new THREE.Group();const disguised=Math.random()<.48;const dark=new THREE.MeshStandardMaterial({color:0x090909,roughness:1}),skin=new THREE.MeshStandardMaterial({color:0xaaa49a,roughness:1}),coat=new THREE.MeshStandardMaterial({color:disguised?0x252a30:0x111111,roughness:1});
- if(disguised){l2Box(g,.58,1.15,.3,0,1.05,0,coat);const h=new THREE.Mesh(new THREE.SphereGeometry(.24,12,10),skin);h.position.y=1.78;g.add(h);for(const x of [-.16,.16]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),dark);eye.position.set(x,1.82,.21);g.add(eye)}}else{l2Box(g,.62,1.65,.38,0,1.1,0,dark);const h=new THREE.Mesh(new THREE.SphereGeometry(.32,12,10),dark);h.position.y=2.08;g.add(h);for(const x of [-.14,.14]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.055,8,6),new THREE.MeshBasicMaterial({color:0xb8b8b8}));eye.position.set(x,2.12,.28);g.add(eye)}}
- const a=Math.random()*Math.PI*2,r=13+Math.random()*12;g.position.set(pl.x+Math.cos(a)*r,0,pl.z+Math.sin(a)*r);scene.add(g);LEVEL2.monster={root:g,disguised,mode:'wander',timer:5+Math.random()*7};}
-function l2MonsterTick(dt){if(!LEVEL2.active||LEVEL2.room||dead)return;if(!LEVEL2.monster){LEVEL2.monsterTimer-=dt;if(LEVEL2.monsterTimer<=0){l2SpawnDisguise();LEVEL2.monsterTimer=28+Math.random()*32}return}const m=LEVEL2.monster,dx=pl.x-m.root.position.x,dz=pl.z-m.root.position.z,d=Math.hypot(dx,dz);let blocked=false;for(const door of LEVEL2.doors){if(door.open)continue;const vx=pl.x-m.root.position.x,vz=pl.z-m.root.position.z,len=vx*vx+vz*vz||1,t=Math.max(0,Math.min(1,((door.x-m.root.position.x)*vx+(door.z-m.root.position.z)*vz)/len)),qx=m.root.position.x+t*vx,qz=m.root.position.z+t*vz;if(Math.hypot(door.x-qx,door.z-qz)<1.35&&Math.hypot(door.x-pl.x,door.z-pl.z)<Math.hypot(door.x-m.root.position.x,door.z-m.root.position.z)+.5)blocked=true}if(blocked){m.mode='wander';m.timer=9}if(d<17&&!blocked)m.mode='chase';if(m.mode==='chase'){m.root.position.x+=dx/(d||1)*dt*2.5;m.root.position.z+=dz/(d||1)*dt*2.5;m.root.rotation.y=Math.atan2(dx,dz);if(d<1.35)finishDeath();if(d>32){m.mode='wander';m.timer=7}}else{m.timer-=dt;if(m.timer<=0){m.root.rotation.y+=Math.random()*2-1;m.timer=4+Math.random()*7}m.root.position.x+=Math.sin(m.root.rotation.y)*dt*.65;m.root.position.z+=Math.cos(m.root.rotation.y)*dt*.65} }
-function l2DoorTick(){if(!gameStarted||dead)return;
- if(!LEVEL2.active&&survivalSeconds>=180&&performance.now()-LEVEL2.lastDoorRoll>18000){LEVEL2.lastDoorRoll=performance.now();if(Math.random()<.62){const a=Math.random()*Math.PI*2,r=7+Math.random()*8,x=pl.x+Math.cos(a)*r,z=pl.z+Math.sin(a)*r;l2CreateDoor(x,z,'z',false)}}
- let nearDoor=null,dist=2.25;for(const d of LEVEL2.doors){const q=Math.hypot(pl.x-d.x,pl.z-d.z);if(q<dist){dist=q;nearDoor=d}}
- if(nearDoor){almondPromptEl.textContent='SPACE — '+(nearDoor.open?'CLOSE':'OPEN')+' DOOR';almondPromptEl.style.display='block';if(keys.Space&&!nearDoor.used){nearDoor.used=true;nearDoor.open=!nearDoor.open;nearDoor.panel.visible=!nearDoor.open;if(!nearDoor.open&&LEVEL2.monster){LEVEL2.monster.mode='wander';LEVEL2.monster.timer=10;}if(nearDoor.metal&&nearDoor.open){if(!LEVEL2.active){LEVEL2.roomReturn={x:pl.x,z:pl.z,yaw:pl.yaw};l2Enter()}else if(!LEVEL2.room){LEVEL2.roomReturn={x:pl.x,z:pl.z,yaw:pl.yaw};l2BuildRoom()}else{scene.remove(LEVEL2.room);LEVEL2.room=null;pl.x=LEVEL2.roomReturn?.x??nearDoor.x;pl.z=LEVEL2.roomReturn?.z??nearDoor.z;pl.yaw=LEVEL2.roomReturn?.yaw??0}}else if(!nearDoor.metal&&nearDoor.open){l2Enter()} }if(!keys.Space)nearDoor.used=false;
- }else if(!FURN.promptKey)almondPromptEl.style.display='none';
- if(LEVEL2.active&&!LEVEL2.room)updateChunksL2();
-}
-
 function removeFurnitureChunk(key){
  const entry=FURN.byChunk.get(key);if(entry){scene.remove(entry.group);FURN.byChunk.delete(key)}
  for(const [itemKey,item] of FURN.items){if(item.chunk===key){if(item.root&&item.root.parent)item.root.parent.remove(item.root);FURN.items.delete(itemKey)}}
@@ -1302,11 +1260,6 @@ function makeFurniture(cx,cz,type,x,z,yaw,key,rand){
   for(const px of [-.62,.62])for(const pz of [-.26,.26])box(.095,.92,.095,px,.46,pz,FURN_DARK);
   box(.62,.27,.58,0,.76,-.025,FURN_SHELF);
   box(.035,.07,.03,0,.77,.28,FURN_DARK);
-  // Ordinary, harmless chair: purely decorative and never triggers an encounter.
-  const chairMat=new THREE.MeshStandardMaterial({color:0x51402d,roughness:.95});
-  const seat=new THREE.Mesh(new THREE.BoxGeometry(.48,.09,.46),chairMat);seat.position.set(0,.48,.78);g.add(seat);
-  for(const cx of [-.19,.19])for(const cz of [.61,.95]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.055,.48,.055),FURN_DARK);leg.position.set(cx,.24,cz);g.add(leg)}
-  const back=new THREE.Mesh(new THREE.BoxGeometry(.48,.52,.075),chairMat);back.position.set(0,.77,1.0);g.add(back);
   worldW=Math.abs(Math.cos(yaw))*1.58+Math.abs(Math.sin(yaw))*.82;
   worldD=Math.abs(Math.sin(yaw))*1.58+Math.abs(Math.cos(yaw))*.82;
   bottleSurface=1.02;
@@ -1327,7 +1280,7 @@ function makeFurniture(cx,cz,type,x,z,yaw,key,rand){
  scene.add(g);
  const collider=[x-worldW/2,x+worldW/2,z-worldD/2,z+worldD/2];
  const entry={group:g,collider};FURN.byChunk.set(cx+','+cz,entry);FURN.colliders.push(collider);
- const lootChance=.60; // 60% chance for each desk or bookshelf to contain almond water.
+ const lootChance=type==='bookshelf'?.48:.38; // Some shelves/desks have a bottle, but most do not.
  const itemKey=key+':almond';
  if(rand()<lootChance&&!FURN.picked.has(itemKey)){
   const lx=type==='desk'?.34:(rand()-.5)*.5,lz=type==='desk'?.03:.04;
