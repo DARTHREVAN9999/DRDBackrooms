@@ -361,7 +361,7 @@ function build(cx,cz){
  const D=chunkData(cx,cz),F=lightField(cx,cz),gx0=cx*N,gz0=cz*N,B={};
  const Q=(k,p,u,c)=>{const b=B[k]||(B[k]={p:[],u:[],c:[]}),warm=LEVEL===0&&(k=='f'||k=='c'||k=='w'||k=='wa');for(const i of [0,1,2,0,2,3]){b.p.push(p[i][0],p[i][1],p[i][2]);b.u.push(u[i][0],u[i][1]);const f=c[i];if(warm)b.c.push(f,f*.94,f*.72);else if(k=='rp')b.c.push(f*.62,f*.1,f*.13);else b.c.push(f,f,f)}};
  const fc=(i,j)=>F[j*(N+1)+i],UV=[[0,0],[1,0],[1,1],[0,1]];
- const wu=LEVEL?4.5:2.22,wv=LEVEL?7:3.8; // yellow level: the wallpaper image covers a whole wall (about 2.2 m wide, floor to ceiling)
+ const wu=LEVEL?4.5:1.868,wv=LEVEL?7:3.2; // yellow level: the wallpaper image covers a whole wall (about 2.2 m wide, floor to ceiling)
  // pit cells: sheer walls that fall away into black
  const abyssQ=e=>{const t=e[4]*.9,u=e[5]*.9,pts=(y0,y1)=>[[e[0],y0,e[1]],[e[2],y0,e[3]],[e[2],y1,e[3]],[e[0],y1,e[1]]];
   Q('w',pts(0,-5),[[e[6]/wu,0],[e[7]/wu,0],[e[7]/wu,-5/wv],[e[6]/wu,-5/wv]],[t,u,u*.3,t*.3]);
@@ -398,7 +398,7 @@ function build(cx,cz){
    if(D.pit&&D.pit[k]&&!(og(nx,nz)&&pitAt(nx,nz)))abyssQ(dx>0?[X1,Z0,X1,Z1,b,c,Z0,Z1]:dx<0?[X0,Z0,X0,Z1,a,d,Z0,Z1]:dz>0?[X0,Z1,X1,Z1,d,c,X0,X1]:[X0,Z0,X1,Z0,a,b,X0,X1]);
    if(og(nx,nz)){const hn=hgAt(nx,nz);if(hn>=hh-.01)continue;y0=hn}
    const e=dx>0?[X1,Z0,X1,Z1,b,c,Z0,Z1]:dx<0?[X0,Z0,X0,Z1,a,d,Z0,Z1]:dz>0?[X0,Z1,X1,Z1,d,c,X0,X1]:[X0,Z0,X1,Z0,a,b,X0,X1];
-   const wvh=LEVEL?wv:hh;
+   const wvh=wv; // never stretched: taller walls just stack another copy of the image on top
    Q('w',[[e[0],y0,e[1]],[e[2],y0,e[3]],[e[2],hh,e[3]],[e[0],hh,e[1]]],[[e[6]/wu,y0/wvh],[e[7]/wu,y0/wvh],[e[7]/wu,hh/wvh],[e[6]/wu,hh/wvh]],[e[4],e[5],e[5]*.8,e[4]*.8])}}
  for(const l of D.L){const y=l.y-.03,hx=l.o?.45:.9,hz=l.o?.9:.45,k=l.k=='off'?'on':l.k,col=l.k=='off'?.1:Math.min(1,.7+l.b*.5);
   Q(k,[[l.x-hx,y,l.z-hz],[l.x+hx,y,l.z-hz],[l.x+hx,y,l.z+hz],[l.x-hx,y,l.z+hz]],UV,[col,col,col,col]);
@@ -1116,7 +1116,7 @@ function think(dt,d){
   if(AI.fail||near(g,1.4)){AI.fail=false;pauseFor(2.2,()=>startLost(g,2));break}
   steer(g[0],g[1],2.9,dt,4);break}
  case 'lost':
-  if(!AI.tg){AI.tg=AI.pts.shift();AI.gl=null;if(!AI.tg){if(chairMode){if(Math.random()<.5)despawnChair();else goDormant()}else if(Math.random()<.8)goDormant(4,20);else setS('wander');break}}
+  if(!AI.tg){AI.tg=AI.pts.shift();AI.gl=null;if(!AI.tg){if(chairMode){if(Math.random()<.5)despawnChair();else goDormant()}else if(AI.chaseT>=15&&Math.random()<.8)goDormant(4,20);else setS('wander');break}}
   if(AI.fail||near(AI.tg,1.4)){AI.fail=false;AI.tg=null;pauseFor(1.2+Math.random()*1.6);break}
   steer(AI.tg[0],AI.tg[1],3.3,dt,5);break;
  case 'search':{const g=AI.last;
@@ -1141,7 +1141,7 @@ function think(dt,d){
    if(AI.flankT>0&&AI.flank){AI.flankT-=dt;if(near(AI.flank,1.5))AI.flankT=0;steer(AI.flank[0],AI.flank[1],(chairMode?6.0:5.4)*AI.fac,dt,chairMode?8:6);break}
    steer(aimX,aimZ,(chairMode?7.4:6.5)*AI.fac,dt,chairMode?8:7);
   }else{AI.lostT+=dt;
-   if(AI.fail||near(AI.last,1.6)||AI.lostT>(chairMode?9:7)){if(AI.lostT>8&&Math.random()<0.7){ambush();break}setS('search');break}
+   if(AI.fail||near(AI.last,1.6)||AI.lostT>(chairMode?9:7)){if(AI.chaseT>=15&&AI.lostT>8&&Math.random()<0.7){ambush();break}setS('search');break}
    steer(AI.last[0]+(chairMode?AI.dir[0]*2.2:0),AI.last[1]+(chairMode?AI.dir[1]*2.2:0), (chairMode?6.0:5.6)*AI.fac,dt,chairMode?7:6)}
   break}
 }
@@ -1283,7 +1283,7 @@ function placeMonsterBehind(minD,maxD,state){
  wallAmbush.phase='idle';wallAmbush.target=null;wallAmbush.timer=0;wallAmbush.jumpT=0;wallAmbush.grace=0;
  stalkPending=false;stalkHideTimer=0;stalkUnseen=0;stalkWasSeen=false;
  const spot=findBehindSpot(minD,maxD);if(!spot)return false;
- setS(state||'chase');mon.x=spot.x;mon.z=spot.z;mon.on=true;mon.path=spot.path||[];mon.pi=1;
+ setS(state||'chase');AI.chaseT=0;mon.x=spot.x;mon.z=spot.z;mon.on=true;mon.path=spot.path||[];mon.pi=1;
  AI.yaw=Math.atan2(pl.x-mon.x,pl.z-mon.z);AI.spd=0;AI.pp=[pl.x,pl.z];AI.sn=0;AI.seen=false;AI.look=0;
  AI.last=[pl.x,pl.z];AI.dir=[0,1];AI.pdir=[0,1];AI.stare=0;AI.leap=0;AI.flank=null;AI.flankT=0;AI.rp=0;AI.lostT=0;AI.atk=0;AI.atkCd=0;
  AI.blinkCd=28+Math.random()*20;AI.gl=null;
@@ -1780,6 +1780,7 @@ function caught(){finishDeath()}
 function monsterStep(dt){
  if(dead){deadT+=dt;if(deadT>1.8&&dd.style.display!='flex'){dd.style.display='flex';document.exitPointerLock()}return}
  if(LEVEL!==0){dreadFx(dt,false,99);if(mon.on||(monRoot&&monRoot.visible)){mon.on=false;mon.path=[];if(monRoot)monRoot.visible=false}return}
+ if(!mon.on)AI.chaseT=0;else if(AI.s==='chase'||AI.s==='search')AI.chaseT=(AI.chaseT||0)+dt; // time spent hunting this player
  if(!ready||!document.pointerLockElement)return;
  // In multiplayer, only the client granted ownership simulates the regular
  // roaming monster. Other clients render the server's shared copy instead.
@@ -1825,7 +1826,7 @@ function monsterStep(dt){
  const playerHasSight=monRoot.visible&&d<36&&playerViewDot>.35&&los(pl.x,pl.z,mon.x,mon.z);
  const monsterHasLineOfSight=los(mon.x,mon.z,pl.x,pl.z);
  const escapedByTurns=trackEscapeRoute(AI,dt,monsterHasLineOfSight);
- if(AI.s==='chase'&&!playerHasSight&&(d>46||(escapedByTurns&&d>8))){
+ if(AI.s==='chase'&&AI.chaseT>=15&&!playerHasSight&&(d>46||(escapedByTurns&&d>8))){
   if(chairMode)despawnChair();
   else goDormant(4,20);
   return;
@@ -1834,7 +1835,7 @@ function monsterStep(dt){
   stalkCooldown=Math.max(0,stalkCooldown-dt);
   if(playerHasSight){stalkWasSeen=true;stalkUnseen=0}
   else if(stalkWasSeen&&d>8)stalkUnseen+=dt;else stalkUnseen=0;
-  if(stalkUnseen>3.2&&stalkCooldown<=0){
+  if(AI.chaseT>=15&&stalkUnseen>3.2&&stalkCooldown<=0){
    const darkness=1-Math.max(0,Math.min(1,illumAt(pl.x,pl.z)));
    const chance=.62+darkness*.3;
    stalkUnseen=0;stalkCooldown=12+Math.random()*14;
@@ -2062,16 +2063,17 @@ function partyMonsterTick(dt,dark){
   P.lurkT-=dt;P.spd*=Math.max(0,1-dt*8);
   P.yaw+=Math.max(-1.5*dt,Math.min(1.5*dt,wrap(Math.atan2(target.x-P.x,target.z-P.z)-P.yaw)));
   P.seenT=(d<34&&mpTargetSeesSpot(P.x,P.z,target))?P.seenT+dt:Math.max(0,P.seenT-dt);
-  if(P.lurkT<=0||P.seenT>.7){P.state='chase';P.spd=3;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.2;P.last=[target.x,target.z];P.seenT=0}
+  if(P.lurkT<=0||P.seenT>.7){P.state='chase';P.chaseT=0;P.spd=3;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.2;P.last=[target.x,target.z];P.seenT=0}
   P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,Math.sin(performance.now()*.0013)*.02);
   return;
  }
  if(d<1.2&&target.local){caught();return}
+ P.chaseT=(P.chaseT||0)+dt;
  const clearRoute=los(P.x,P.z,target.x,target.z),seen=d<34&&clearRoute;
  const escapedByTurns=trackEscapeRoute(P,dt,clearRoute,target);
  if(seen){P.lostT=0;P.last=[target.x,target.z]}else P.lostT+=dt;
  P.farT=(d>26&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
- if((P.farT>2.5||P.lostT>6||d>52||(escapedByTurns&&d>8))&&!mpTargetSeesSpot(P.x,P.z,target)){
+ if(P.chaseT>=15&&(P.farT>2.5||P.lostT>6||d>52||(escapedByTurns&&d>8))&&!mpTargetSeesSpot(P.x,P.z,target)){
   if(Math.random()<0.5){partyHide()}
   else{P.root.visible=false;P.state='pending';P.pendT=5+Math.random()*25;P.pendTry=0;P.soundNextAt=0}
   return;
@@ -2216,7 +2218,7 @@ function bodyMonsterTick(dt,dark){
   const ambush=P.pendMode==='ambush',sp=findBodySpot(target);
   if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(target.x-P.x,target.z-P.z);P.spd=0;P.turn=0;
    P.seenT=0;P.lostT=0;P.farT=0;P.stepT=0;P.last=[target.x,target.z];P.pp=[target.x,target.z];P.pendMode='';
-   if(ambush){disgHide();P.state='chase';P.root.visible=true;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.lunge=0;P.lungeCd=.35}
+   if(ambush){disgHide();P.state='chase';P.chaseT=0;P.root.visible=true;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.lunge=0;P.lungeCd=.35}
    else{P.state='disguise';P.disT=8.0+Math.random()*1.5;P.root.visible=false;disgShow()}}
   else{P.pendTry++;P.pendT=.35;if(P.pendTry>10)bodyHide()}
   return;
@@ -2229,16 +2231,27 @@ function bodyMonsterTick(dt,dark){
   P.lurkT-=dt;P.spd*=Math.max(0,1-dt*8);
   P.yaw+=Math.max(-1.8*dt,Math.min(1.8*dt,wrap(Math.atan2(target.x-P.x,target.z-P.z)-P.yaw)));
   P.seenT=(d<34&&mpTargetSeesSpot(P.x,P.z,target))?P.seenT+dt:Math.max(0,P.seenT-dt);
-  if(P.lurkT<=0||P.seenT>.45){P.state='chase';P.spd=3.2;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.0;P.last=[target.x,target.z];P.seenT=0}
+  if(P.lurkT<=0||P.seenT>.45){P.state='chase';P.chaseT=0;P.spd=3.2;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.0;P.last=[target.x,target.z];P.seenT=0}
   P.shake+=dt*2.8;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,Math.sin(P.shake)*.06);
   return;
  }
+ if(P.state==='leave'){
+  if(d<1.0&&target.local){caught();return}
+  P.leaveT-=dt;
+  if(P.leaveT<=0||(d>30&&!los(P.x,P.z,target.x,target.z))){bodyHide();return}
+  bodySteer(dt,P.leaveGoal[0],P.leaveGoal[1],BODY_SPEED*.6,6);
+  P.anim+=dt*(1+P.spd*1.15);P.shake+=dt*(1.6+P.spd*.35);
+  P.root.position.set(P.x,0,P.z);P.root.rotation.y=P.yaw;P.root.rotation.x+=(0-P.root.rotation.x)*Math.min(1,dt*8);P.root.rotation.z=0;
+  if(P.spd>.5){P.stepT-=dt*(P.spd*.45+.55);if(P.stepT<=0){P.stepT=1;monsterStepSnd(P.x,P.z,false)}}
+  return;
+ }
  if(d<1.25&&target.local){caught();return}
+ if(LEVEL===1){if(carRoomHidden(P,target)){P.doorT=(P.doorT||0)+dt;if(P.doorT>2.2){carMonsterLeave(P,target);return}}else P.doorT=0}
  const clearRoute=los(P.x,P.z,target.x,target.z),seen=d<34&&clearRoute;
  const escapedByTurns=trackEscapeRoute(P,dt,clearRoute,target);
  if(seen){P.lostT=0;P.last=[target.x,target.z]}else P.lostT+=dt;
  P.farT=(d>28&&!seen)?P.farT+dt:Math.max(0,P.farT-dt*.5);
- if((P.farT>2.8||P.lostT>5.5||d>50||(escapedByTurns&&d>8))&&!mpTargetSeesSpot(P.x,P.z,target)){
+ if(P.chaseT>=15&&(P.farT>2.8||P.lostT>5.5||d>50||(escapedByTurns&&d>8))&&!mpTargetSeesSpot(P.x,P.z,target)){
   if(Math.random()<0.5){bodyHide()}
   else{P.root.visible=false;disgHide();P.state='pending';P.pendMode='ambush';P.pendT=4+Math.random()*24;P.pendTry=0;P.soundNextAt=0}
   return;
@@ -2697,8 +2710,8 @@ function enterCarpark(){
 function levelHardReset(){
  fallen=false;fallT=0;tpFadeEl.style.transition='none';tpFadeEl.style.opacity='0';
  if(LEVEL===0){doorsClear();DR.armed=false;DR.spawnT=0;return}
- leaveLevelCleanup();LEVEL=0;applyLevelVisuals();
- tpFadeEl.style.transition='none';tpFadeEl.style.opacity='0';
+ leaveLevelCleanup();applyLevelVisuals(); // died in the car park: stay in the car park
+ CAR.encT=16+Math.random()*18;
 }
 
 // ---- car-park level generation: one big pillared hall, with metal-doored rooms ----
@@ -2817,22 +2830,22 @@ function carFillRoom(cx,cz,D,room,entry,cols){
  };
  const area=(room.x1-room.x0-1)*(room.z1-room.z0-1);
  const nDesk=ri(2,Math.max(2,Math.min(6,(area/7)|0))),nMach=ri(2,Math.max(2,Math.min(5,(area/9)|0)));
- let deskIdx=0;
- for(let i=0;i<nDesk;i++){
-  const p=tryPlace(.8,.42,r()<.7);if(!p)continue;
+ const deskSpots=[];
+ for(let i=0,n=0;i<nDesk+8&&n<nDesk;i++){
+  const p=tryPlace(.8,.42,r()<.7);if(!p)continue;n++;
   const pg=new THREE.Group();pg.position.set(p.x,0,p.z);pg.rotation.y=p.yaw;src.add(pg);carBuildDesk(pg);
-  cols.push([p.x-p.w,p.x+p.w,p.z-p.d,p.z+p.d]);
-  const idx=deskIdx++;
-  if(r()<.42){
-   const itemKey='L1:car:'+key+':'+room.i+':'+idx+':almond';
-   if(!FURN.picked.has(itemKey)){
-    const lx=-.05+(r()-.5)*.8,lz=(r()-.5)*.3,wx=p.x+lx*Math.cos(p.yaw)+lz*Math.sin(p.yaw),wz=p.z-lx*Math.sin(p.yaw)+lz*Math.cos(p.yaw);
-    entry.bottles.push({itemKey,wx,wz});
-   }
+  cols.push([p.x-p.w,p.x+p.w,p.z-p.d,p.z+p.d]);deskSpots.push(p);
+ }
+ // 60% chance of exactly one Almond Water bottle on one of this room's desks
+ if(deskSpots.length&&r()<.6){
+  const p=deskSpots[ri(0,deskSpots.length-1)],itemKey='L1:car:'+key+':'+room.i+':almond';
+  if(!FURN.picked.has(itemKey)){
+   const lx=-.05+(r()-.5)*.8,lz=(r()-.5)*.3,wx=p.x+lx*Math.cos(p.yaw)+lz*Math.sin(p.yaw),wz=p.z-lx*Math.sin(p.yaw)+lz*Math.cos(p.yaw);
+   entry.bottles.push({itemKey,wx,wz});
   }
  }
- for(let i=0;i<nMach;i++){
-  const kind=ri(0,3),[hw,hd]=CAR_MACH[kind],p=tryPlace(hw,hd,r()<.75);if(!p)continue;
+ for(let i=0,n=0;i<nMach+8&&n<nMach;i++){
+  const kind=ri(0,3),[hw,hd]=CAR_MACH[kind],p=tryPlace(hw,hd,r()<.75);if(!p)continue;n++;
   const pg=new THREE.Group();pg.position.set(p.x,0,p.z);pg.rotation.y=p.yaw;src.add(pg);carBuildMachine(pg,kind);
   cols.push([p.x-p.w,p.x+p.w,p.z-p.d,p.z+p.d]);
  }
@@ -2881,6 +2894,28 @@ function carSync(){
  if(changed)rebuildXC();
 }
 
+function carRoomAt(x,z){
+ const gx=Math.floor(x/U),gz=Math.floor(z/U),cx=Math.floor(gx/N),cz=Math.floor(gz/N),D=chunkData(cx,cz);
+ if(!D.rooms)return null;
+ const lx=gx-cx*N,lz=gz-cz*N;
+ for(const r of D.rooms)if(lx>r.x0&&lx<r.x1&&lz>r.z0&&lz<r.z1)return D.doors[r.i].key;
+ return null;
+}
+function carRoomHidden(P,t){
+ if(!t.local)return false;
+ const pk=carRoomAt(t.x,t.z);if(!pk||carRoomAt(P.x,P.z)===pk)return false;
+ const d=DR.doors.get(pk);return !!d&&d.target<.5&&d.open<.15;
+}
+function carMonsterLeave(P,t){
+ let goal=null;const dNow=Math.hypot(P.x-t.x,P.z-t.z);
+ for(let k=0;k<50&&!goal;k++){
+  const a=Math.random()*6.283,r=18+Math.random()*16,x=P.x+Math.sin(a)*r,z=P.z+Math.cos(a)*r;
+  if(Math.hypot(x-t.x,z-t.z)<dNow+8)continue;
+  if(isFree(x,z,.8))goal=[x,z];
+ }
+ if(!goal){bodyHide();return}
+ P.state='leave';P.leaveGoal=goal;P.leaveT=9;P.rp=0;P.gl=null;P.lunge=0;P.doorT=0;
+}
 // ---- car-park hunting: only the disguise (skin stealer) monsters, sometimes disguised as a player, sometimes not ----
 function startCarEncounter(){
  if(BODY.state!=='idle')return false;
@@ -3085,7 +3120,7 @@ function mpBodySync(force){
  const now=performance.now();
  if(active&&!force&&now-MP.bodySyncAt<80)return;
  MP.bodySyncAt=now;
- const d={t:'b',lv:LEVEL,active:active?1:0,state:active?BODY.state:'idle',
+ const d={t:'b',lv:LEVEL,active:active?1:0,state:active?(BODY.state==='leave'?'chase':BODY.state):'idle',
   x:active?(Number.isFinite(BODY.x)?BODY.x:pl.x):0,z:active?(Number.isFinite(BODY.z)?BODY.z:pl.z):0,
   yaw:active?(Number.isFinite(BODY.yaw)?BODY.yaw:pl.yaw):0,spd:active?(Number(BODY.spd)||0):0,
   rx:active&&BODY.root?BODY.root.rotation.x:0,rz:active&&BODY.root?BODY.root.rotation.z:0,
@@ -3275,7 +3310,7 @@ function disgTick(dt){const P=BODY;
  MP.hz.root.visible=true;
  P.disT=Math.max(0,(Number(P.disT)||8.0)-dt);
  if(P.disT<=0){
-  disgHide();P.state='chase';P.spd=0;P.shake=0;P.seenT=0;P.lostT=0;P.farT=0;
+  disgHide();P.state='chase';P.chaseT=0;P.spd=0;P.shake=0;P.seenT=0;P.lostT=0;P.farT=0;
   P.last=[target.x,target.z];P.pp=[target.x,target.z];P.gl=null;P.path=[];P.rp=0;P.lunge=0;P.lungeCd=.6;
   P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return;
  }

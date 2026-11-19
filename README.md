@@ -79,7 +79,7 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 - The car park is an infinite, dim concrete parking garage: 2 m square pillars with yellow/black hazard stripes, ceiling beams and a red pipe, and sparse strip lights. There are **no blackouts** and **no normal monster** there.
 - Only the disguise (Skin Stealer) monsters hunt you in the car park. They spawn at random; half the time they walk behind you disguised as a player, half the time they appear as the monster and chase straight away. Walking over a body can still trigger them too.
 - Metal doors in the car park (Space to open/close) lead into rooms with metal desks, machinery and cones. Almond Water sometimes sits on the desks. Dead bodies can spawn anywhere in the car park; balloons, chairs and wooden furniture never do.
-- Dying returns you to the yellow level. Players on different levels cannot see each other or each other's monsters; the server keeps one disguise-monster encounter per level and respawns you beside the nearest living player on the same level.
+- Dying in the car park respawns you in the car park (alone: a random spot; with others: beside the nearest living player there). Players on different levels cannot see each other or each other's monsters; the server keeps one disguise-monster encounter per level and respawns you beside the nearest living player on the same level.
 - The yellow level's wallpaper now uses the olive chevron-stripe pattern, Almond Milk is renamed Almond Water everywhere, and natural dead bodies are slightly more common on every level.
 
 ## Latest changes (abyss, bodies, spawning)
@@ -94,7 +94,13 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 
 ## Latest changes (wallpaper, spawns, car park scale)
 
-- **Wallpaper:** the yellow level uses the supplied olive chevron image, one image per whole wall (about 2.2 m wide, floor to ceiling), so the pattern is small and fine.
+- **Wallpaper:** the yellow level uses the supplied olive chevron image, one image per whole wall (about 2.2 m wide, floor to ceiling), so the pattern is small and fine. Taller walls stack another copy of the image on top instead of stretching it (one image is 3.2 m tall, the shortest wall).
 - **Normal monster:** if you are pressed against a wall and nothing walkable is behind you, it now spawns at the nearest reachable space in any direction (for example the corridor on the other side) and chases from there.
 - **More props:** furniture, balloons and bodies are more common in every chunk (bodies roughly 1.8x, balloons about 2x, furniture about 1.5x), and car-park bodies are much more common (about 4x the old rate).
 - **Car park:** the hall ceiling is twice as high (7 m), pillars are slimmer (1.4 m) and twice as far apart (16 m), and beams and pipes were rescaled to match. Metal-door rooms keep their original 3.5 m ceilings.
+
+## Latest changes (escapes, doors, rooms)
+
+- **Escaping needs 15 seconds of chasing.** The normal monster, the balloon monster and the disguise monster cannot lose you, slip away or despawn until they have hunted you for 15 seconds (the normal monster's timer restarts each time it reappears).
+- **Hide behind a closed metal door** in the car park: if you are inside a room, the door is shut and the monster is outside, it loses interest after about 2 seconds and walks away, then vanishes.
+- **Car park rooms always contain** metal desks and machinery. Each room has a 60% chance of exactly one Almond Water bottle, on one of its desks.
