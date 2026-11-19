@@ -72,3 +72,22 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 - Solo respawns choose a fresh random safe location; when another living player is online, the existing nearest-player spawn behaviour remains in effect.
 - The survival timer is displayed in the upper-left with a red recording indicator. It pauses when the game is paused and the death screen reports the final run time.
 - A subtle VHS scanline, tracking and screen-jitter overlay is enabled while the player is alive.
+
+## Wooden doors and the car park level
+
+- After surviving more than 3 minutes on the yellow level, random wooden doors start appearing in corridors near you (at most 4 at a time, each client rolls its own). Walk up and press **Space** to open or close one. Stepping through an open wooden door teleports you to the car park.
+- The car park is an infinite, dim concrete parking garage: 2 m square pillars with yellow/black hazard stripes, ceiling beams and a red pipe, and sparse strip lights. There are **no blackouts** and **no normal monster** there.
+- Only the disguise (Skin Stealer) monsters hunt you in the car park. They spawn at random; half the time they walk behind you disguised as a player, half the time they appear as the monster and chase straight away. Walking over a body can still trigger them too.
+- Metal doors in the car park (Space to open/close) lead into rooms with metal desks, machinery and cones. Almond Water sometimes sits on the desks. Dead bodies can spawn anywhere in the car park; balloons, chairs and wooden furniture never do.
+- Dying returns you to the yellow level. Players on different levels cannot see each other or each other's monsters; the server keeps one disguise-monster encounter per level and respawns you beside the nearest living player on the same level.
+- The yellow level's wallpaper now uses the olive chevron-stripe pattern, Almond Milk is renamed Almond Water everywhere, and natural dead bodies are slightly more common on every level.
+
+## Latest changes (abyss, bodies, spawning)
+
+- **Abyss pits:** holes in the yellow level now have sheer walls that fade to black. Walking into one makes you fall (the screen drops and fades out); you leave **no body** behind, and your torch is lost.
+- **One monster per body:** the first time anyone walks over a body (player or natural) its single disguise-monster roll is used up for everyone, including players who join later. It can never trigger again.
+- **Player bodies** now have blood pools like natural bodies.
+- **Torch drops:** if you die carrying a torch it lies beside your body with the battery level it had when you died. Walk over it to pick it up (shared; whoever grabs it first takes it).
+- **Respawning:** alone on a level you respawn at a random spot anywhere on the map. With others alive on the same level you respawn beside the nearest one.
+- **Almond Water** uses `almond_water_from_backrooms.glb` (embedded in `index.html`) for world bottles, desks and the first-person drinking view.
+- **Normal monster ambushes:** after you escape it, it now reappears behind you far more often and sooner, always silently (no flicker or blackout).
