@@ -91,3 +91,10 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 - **Respawning:** alone on a level you respawn at a random spot anywhere on the map. With others alive on the same level you respawn beside the nearest one.
 - **Almond Water** uses `almond_water_from_backrooms.glb` (embedded in `index.html`) for world bottles, desks and the first-person drinking view.
 - **Normal monster ambushes:** after you escape it, it now reappears behind you far more often and sooner, always silently (no flicker or blackout).
+
+## Latest changes (wallpaper, spawns, car park scale)
+
+- **Wallpaper:** the yellow level uses the supplied olive chevron image, one image per whole wall (about 2.2 m wide, floor to ceiling), so the pattern is small and fine.
+- **Normal monster:** if you are pressed against a wall and nothing walkable is behind you, it now spawns at the nearest reachable space in any direction (for example the corridor on the other side) and chases from there.
+- **More props:** furniture, balloons and bodies are more common in every chunk (bodies roughly 1.8x, balloons about 2x, furniture about 1.5x), and car-park bodies are much more common (about 4x the old rate).
+- **Car park:** the hall ceiling is twice as high (7 m), pillars are slimmer (1.4 m) and twice as far apart (16 m), and beams and pipes were rescaled to match. Metal-door rooms keep their original 3.5 m ceilings.
