@@ -104,3 +104,22 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 - **Escaping needs 15 seconds of chasing.** The normal monster, the balloon monster and the disguise monster cannot lose you, slip away or despawn until they have hunted you for 15 seconds (the normal monster's timer restarts each time it reappears).
 - **Hide behind a closed metal door** in the car park: if you are inside a room, the door is shut and the monster is outside, it loses interest after about 2 seconds and walks away, then vanishes.
 - **Car park rooms always contain** metal desks and machinery. Each room has a 60% chance of exactly one Almond Water bottle, on one of its desks.
+
+## Puddles, flickering lights and wallpaper (car park / first level)
+
+- **Monsters start later in the car park:** the first encounter takes 50–85 s after you arrive, and later ones 40–90 s apart. Only the disguise (Skin Stealer) monsters hunt there.
+- **Puddles:** glistening, softly rippling puddles lie across the car park floor.
+- **Flickering lights:** many more car-park lights flicker or pulse, and far more often. There are still no blackouts there.
+- **Wallpaper:** the yellow level repeats a seamless tile on every wall.
+
+## Performance pass
+
+No gameplay changes: adaptive render resolution (capped at 1.5x device pixels), glow sprites instead of a real light per Almond Water bottle, a 7x7 chunk streaming window, chunk lighting and meshing split across frames, cached light visibility, allocation-free pathfinding, merged door meshes, a cheaper VHS overlay and cached HUD writes.
+
+## Rooms, blood, respawns, torches
+
+- **Car-park rooms:** every room has 2–5 metal tables and 2–5 machines standing against its inside walls, and a 50% chance (per room, not per table) of exactly one Almond Water bottle on one of the tables.
+- **Car park:** bodies are 15% of chunks; the first level has far more bodies (22% of chunks) and balloons (20% of chunks).
+- **Blood:** rare, random blood splatters appear on floors and walls of both maps.
+- **Respawning:** dying in the car park respawns you in the car park. If you die on the first level and nobody else is alive there, but someone is alive in the car park, you respawn beside them in the car park; living players on the first level are still used first.
+- **Shared torch light:** when any player switches a torch on, every other player on the same level sees its beam light up the walls, floor and ceiling (up to the 3 nearest torches), plus a faint glow at the holder.

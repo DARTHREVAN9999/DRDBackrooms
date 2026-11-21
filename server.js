@@ -141,6 +141,8 @@ wss.on('connection', (ws) => {
         d: data.d ? 1 : 0,
         lv: cleanLevel(data.lv),
         f: data.f ? 1 : 0,
+        p: Math.max(-1.6, Math.min(1.6, cleanNumber(data.p))),
+        tl: Math.max(0, Math.min(1, cleanNumber(data.tl))),
         tb: Math.max(-1, Math.min(1, cleanNumber(data.tb, -1))),
       };
       const previous = peer.state;
@@ -399,9 +401,12 @@ wss.on('connection', (ws) => {
       // select whichever other living player is nearest to it.
       const fromX = cleanNumber(data.x, 33);
       const fromZ = cleanNumber(data.z, 33);
-      const target = nearestLivePlayer(fromX, fromZ, id, cleanLevel(data.lv));
+      const reqLevel = cleanLevel(data.lv);
+      let target = nearestLivePlayer(fromX, fromZ, id, reqLevel);
+      // Dying on the first level with nobody else alive there: respawn beside a living player in the car park.
+      if (!target && reqLevel === 0 && data.reason === 'respawn') target = nearestLivePlayer(fromX, fromZ, id, 1);
       if (target) {
-        send(ws, { t: 'p', near: true, id: target.id, x: target.x, z: target.z, y: target.y });
+        send(ws, { t: 'p', near: true, id: target.id, x: target.x, z: target.z, y: target.y, lv: target.lv | 0 });
       } else {
         // First player in a session: retain the game's normal solo spawn.
         send(ws, { t: 'p', near: false, x: fromX, z: fromZ, y: cleanNumber(data.y) });
