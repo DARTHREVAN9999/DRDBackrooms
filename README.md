@@ -133,3 +133,8 @@ No gameplay changes: adaptive render resolution (capped at 1.5x device pixels), 
 - **Party level:** bright coloured rooms with patterned carpets, ball pits (the first level's pits, harmless here), tables with cake and, sometimes, a bottle of Almond Water on them. Balloons spawn often (45% of chunks) and balloon monsters appear on their own every 35-85 seconds. They are the only monsters there (no normal monster, no disguise monsters, no bodies).
 - **Blackouts and flickering everywhere:** blackouts now happen in all three maps. In the car park a blackout, or (rarely) a burst of flickering lights, can make a disguise monster come up behind you; in the party level it can bring a balloon monster.
 - **Respawns:** the car-park floor is part of the level ID, so "respawn at the nearest living player" now takes the floor into account, and dying on the first level with nobody else alive there still puts you beside a car-park player (any floor).
+
+## Blood and dark patches (tuning)
+
+- **Blood:** splatters on floors and walls are now rarer on every map (first level, car park floors, party level), and noticeably rarer in big open spaces than in tight corridors and small rooms (the more of the surrounding 5x5 cells are open, the less likely one is accepted).
+- **Dark patches:** the unlit patches on the first level are rarer (17% of chunks, was 28%). The party level has them in 30% of chunks, and the car park now has bigger and more frequent unlit patches (60% of chunks, sometimes two).

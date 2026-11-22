@@ -376,7 +376,7 @@ function chunkData(cx,cz){
  for(const {p,w} of portsV(cx)){if(rd()<.35){attach(p,16,w,3.8);hall(false,p,w,3.8)}else side(0,0,p,w,true)}
  // ceiling lights: varied spacing, brightness and dead zones; flickering panels are very rare
  const sp=[[2,2],[3,3],[2,4],[4,4],[3,5],[5,5]][ri(0,5)],ox=ri(0,sp[0]-1),oz=ri(0,sp[1]-1),ip=rd()<.06?.25:rd()<.3?.7:1,bb=.6+rd()*.4,ori=rd()<.5,dk=[];
- for(let t=rd()<.28?1:0;t>0;t--){const k=OL[Math.floor(rd()*OL.length)];dk.push([k%N,(k/N)|0,ri(3,8)])}
+ for(let t=rd()<(LEVEL===0?.17:.3)?1:0;t>0;t--){const k=OL[Math.floor(rd()*OL.length)];dk.push([k%N,(k/N)|0,ri(3,8)])} // dark patches: a bit rarer on the first level, common on the party level
  for(let z=0;z<N;z++)for(let x=0;x<N;x++){const k=z*N+x;if(!open[k]||(x+ox)%sp[0]||(z+oz)%sp[1])continue;
   if(dk.some(q=>(q[0]-x)**2+(q[1]-z)**2<q[2]*q[2])||rd()>ip)continue;
   const r=rd(),kind=r<.012?'f'+ri(0,2):r<.05?'pu':r<.1?'off':'on';
@@ -490,7 +490,7 @@ function build(cx,cz){
   }
   if(!D.pit[k]&&!(D.pil&&D.pil[k])&&!rmp){
    const bh=(((gx0+x)*2654435761)^((gz0+z)*40503)^((window._worldSeed|0)*668265263))>>>0;
-   if((bh%1000)<3){ // rare floor splatter
+   if((bh%1000)<3&&bloodAccept(gx0+x,gz0+z,(bh>>>20)%100)){ // rare floor splatter
     const q=(bh>>10)&1023,sz=.7+((q%100)/100)*.9,th=(q/1023)*6.283,cs=Math.cos(th),sn=Math.sin(th),
      bx=X0+U/2+(((bh>>>4)%100)/100-.5)*1.2,bz=Z0+U/2+(((bh>>>9)%100)/100-.5)*1.2,bl=Math.min(.9,(a+b+c+d)/4*.9+.04);
     const pt=(u,v)=>[bx+u*cs-v*sn,.017,bz+u*sn+v*cs];
@@ -527,7 +527,7 @@ function build(cx,cz){
    Q('w',[[e[0],y0,e[1]],[e[2],y0,e[3]],[e[2],hh,e[3]],[e[0],hh,e[1]]],[[e[6]/wu,y0/wvh],[e[7]/wu,y0/wvh],[e[7]/wu,hh/wvh],[e[6]/wu,hh/wvh]],[e[4],e[5],e[5]*.8,e[4]*.8]);
    if(y0===0){ // rare wall splatter, kept inside the 2 m wall face
     const wh=(((gx0+x)*1597334677)^((gz0+z)*3812015801)^((dx*7+dz*13)*99991)^((window._worldSeed|0)*374761393))>>>0;
-    if((wh%1000)<4){
+    if((wh%1000)<4&&bloodAccept(gx0+x,gz0+z,(wh>>>20)%100)){
      const q=(wh>>10)&1023,sz=.45+((q%100)/100)*.4,ux=e[2]-e[0],uz=e[3]-e[1],ul=Math.hypot(ux,uz)||1,tx=ux/ul,tz=uz/ul,
       mx=(e[0]+e[2])/2+tx*(((q>>5)%100)/100-.5)*.2-dx*.02,mz=(e[1]+e[3])/2+tz*(((q>>5)%100)/100-.5)*.2-dz*.02,yc=.75+((q>>2)%100)/100*1.3;
      const pw=(u,y)=>[mx+tx*u,y,mz+tz*u];
@@ -2931,12 +2931,12 @@ function carChunk(cx,cz){
   doors.push({gx:cx*N+dx,gz:cz*N+dz,axis,key:'L1:door:'+key+':'+rooms.length});
   rooms.push({x0,z0,x1,z1,i:rooms.length});
  }
- const ori=rd()<.5,dz0=rd()<.4?{x:ri(0,N-1),z:ri(0,N-1),r:ri(4,9)}:null;
+ const ori=rd()<.5,dzs=[];for(let t=rd()<.6?(rd()<.4?2:1):0;t>0;t--)dzs.push({x:ri(0,N-1),z:ri(0,N-1),r:ri(5,10)}); // dark patches with no lights
  const addL=(x,z,kind,b)=>{const k=z*N+x;L.push({x:(cx*N+x+.5)*U,z:(cz*N+z+.5)*U,y:hg[k],b,k:kind,gx:cx*N+x,gz:cz*N+z,i:k,o:ori})};
  for(let z=0;z<N;z++)for(let x=0;x<N;x++){
   const k=z*N+x;if(!open[k]||rm[k])continue;
   if(x%4!==0||z%4!==0||pil[k])continue;
-  if(dz0&&(dz0.x-x)**2+(dz0.z-z)**2<dz0.r*dz0.r)continue;
+  if(dzs.some(q=>(q.x-x)**2+(q.z-z)**2<q.r*q.r))continue;
   const r=rd(),kind=r<.38?'off':r<.52?'f'+ri(0,2):r<.56?'pu':'on';
   addL(x,z,kind,(.62+rd()*.3));
  }
@@ -2946,6 +2946,11 @@ function carChunk(cx,cz){
  }
  for(const k of rampLights)addL(k%N,(k/N)|0,'on',.8);
  D={open,hg,wet,pit,pil,rm,ramp,ramps,L,rooms,doors,cx,cz};dataC.set(key,D);return D;
+}
+// blood is likelier in cramped places: the more of the surrounding 5x5 cells are open, the less likely a splatter is accepted
+function bloodAccept(gx,gz,r100){
+ let n=0;for(let dz=-2;dz<=2;dz++)for(let dx=-2;dx<=2;dx++)if(og(gx+dx,gz+dz))n++;
+ return r100<70*(1-.7*(n/25));
 }
 function pitAt(gx,gz){const D=cellD(gx,gz);return D.pit?D.pit[(gz-D.cz*N)*N+(gx-D.cx*N)]:0}
 function pilAt(gx,gz){const D=cellD(gx,gz);return D.pil?D.pil[(gz-D.cz*N)*N+(gx-D.cx*N)]:0}
