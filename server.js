@@ -18,7 +18,7 @@ let nextId = 1;
 let worldSeed = makeSeed();
 // One Skin Stealer encounter per level (0 = yellow Backrooms, 1 = car park).
 const sharedBodies = new Map();
-function cleanLevel(value) { return Math.max(0, Math.min(3, Math.floor(cleanNumber(value)))); }
+function cleanLevel(value) { return Math.max(0, Math.min(99, Math.floor(cleanNumber(value)))); }
 const sharedAlmondPicked = new Set();
 const sharedConsumedBodies = new Set(); // corpse keys that already had their one disguised-monster roll
 const sharedTorchPicked = new Set();
@@ -93,6 +93,18 @@ function playerSnapshot(exceptId) {
     players.push({ t: 's', id, ...peer.state });
   }
   return players;
+}
+
+function nearestCarParkPlayer(fromX, fromZ, exceptId) {
+  let best = null, bestD = Infinity;
+  for (const [id, peer] of peers) {
+    if (id === exceptId || !peer.state || peer.state.d) continue;
+    const lv = peer.state.lv | 0;
+    if (lv < 1 || lv % 10 !== 1) continue; // any car-park floor
+    const dx = peer.state.x - fromX, dz = peer.state.z - fromZ, d = dx * dx + dz * dz;
+    if (d < bestD) { bestD = d; best = { id, x: peer.state.x, z: peer.state.z, y: peer.state.y, lv }; }
+  }
+  return best;
 }
 
 function nearestLivePlayer(fromX, fromZ, exceptId, lv) {
@@ -404,7 +416,7 @@ wss.on('connection', (ws) => {
       const reqLevel = cleanLevel(data.lv);
       let target = nearestLivePlayer(fromX, fromZ, id, reqLevel);
       // Dying on the first level with nobody else alive there: respawn beside a living player in the car park.
-      if (!target && reqLevel === 0 && data.reason === 'respawn') target = nearestLivePlayer(fromX, fromZ, id, 1);
+      if (!target && reqLevel === 0 && data.reason === 'respawn') target = nearestCarParkPlayer(fromX, fromZ, id);
       if (target) {
         send(ws, { t: 'p', near: true, id: target.id, x: target.x, z: target.z, y: target.y, lv: target.lv | 0 });
       } else {

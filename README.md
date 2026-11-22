@@ -76,7 +76,7 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 ## Wooden doors and the car park level
 
 - After surviving more than 3 minutes on the yellow level, random wooden doors start appearing in corridors near you (at most 4 at a time, each client rolls its own). Walk up and press **Space** to open or close one. Stepping through an open wooden door teleports you to the car park.
-- The car park is an infinite, dim concrete parking garage: 2 m square pillars with yellow/black hazard stripes, ceiling beams and a red pipe, and sparse strip lights. There are **no blackouts** and **no normal monster** there.
+- The car park is an infinite, dim concrete parking garage: 2 m square pillars with yellow/black hazard stripes, ceiling beams and a red pipe, and sparse strip lights. There is **no normal monster** there (blackouts and flickering do happen, see the last section).
 - Only the disguise (Skin Stealer) monsters hunt you in the car park. They spawn at random; half the time they walk behind you disguised as a player, half the time they appear as the monster and chase straight away. Walking over a body can still trigger them too.
 - Metal doors in the car park (Space to open/close) lead into rooms with metal desks, machinery and cones. Almond Water sometimes sits on the desks. Dead bodies can spawn anywhere in the car park; balloons, chairs and wooden furniture never do.
 - Dying in the car park respawns you in the car park (alone: a random spot; with others: beside the nearest living player there). Players on different levels cannot see each other or each other's monsters; the server keeps one disguise-monster encounter per level and respawns you beside the nearest living player on the same level.
@@ -109,7 +109,7 @@ The WebSocket server now relays the current blackout, chair encounter, balloon p
 
 - **Monsters start later in the car park:** the first encounter takes 50–85 s after you arrive, and later ones 40–90 s apart. Only the disguise (Skin Stealer) monsters hunt there.
 - **Puddles:** glistening, softly rippling puddles lie across the car park floor.
-- **Flickering lights:** many more car-park lights flicker or pulse, and far more often. There are still no blackouts there.
+- **Flickering lights:** many more car-park lights flicker or pulse, and far more often. Blackouts happen there too (see the last section).
 - **Wallpaper:** the yellow level repeats a seamless tile on every wall.
 
 ## Performance pass
@@ -123,3 +123,13 @@ No gameplay changes: adaptive render resolution (capped at 1.5x device pixels), 
 - **Blood:** rare, random blood splatters appear on floors and walls of both maps.
 - **Respawning:** dying in the car park respawns you in the car park. If you die on the first level and nobody else is alive there, but someone is alive in the car park, you respawn beside them in the car park; living players on the first level are still used first.
 - **Shared torch light:** when any player switches a torch on, every other player on the same level sees its beam light up the walls, floor and ceiling (up to the 3 nearest torches), plus a faint glow at the holder.
+
+## Car park ramps, glitch spots and the party level
+
+- **Door slits:** car-park metal doors have a see-through slit at eye height. Closed doors still block movement for everyone, including monsters (monster movement is now collision-checked, so a door that shuts mid-chase stops them).
+- **Room hunting:** staying inside a car-park room for more than 20 seconds makes a disguise monster appear inside the room with you.
+- **Ramps and more floors:** concrete ramps (with side walls and a rising ceiling) lead up to further car-park floors, which are generated endlessly. Every up ramp has a matching down ramp on the floor above in exactly the same place, so walking up a ramp carries straight on into the hall above. Players on different floors cannot see each other. Monsters cannot use ramps. Dying puts you back on floor 1.
+- **Glitch spots:** after 4 minutes in the car park, glitching floor patches start appearing near you (up to 3). Walk onto one and you fall (screen drops and fades) into the party level.
+- **Party level:** bright coloured rooms with patterned carpets, ball pits (the first level's pits, harmless here), tables with cake and, sometimes, a bottle of Almond Water on them. Balloons spawn often (45% of chunks) and balloon monsters appear on their own every 35-85 seconds. They are the only monsters there (no normal monster, no disguise monsters, no bodies).
+- **Blackouts and flickering everywhere:** blackouts now happen in all three maps. In the car park a blackout, or (rarely) a burst of flickering lights, can make a disguise monster come up behind you; in the party level it can bring a balloon monster.
+- **Respawns:** the car-park floor is part of the level ID, so "respawn at the nearest living player" now takes the floor into account, and dying on the first level with nobody else alive there still puts you beside a car-park player (any floor).
