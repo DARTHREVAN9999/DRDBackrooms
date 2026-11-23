@@ -138,3 +138,7 @@ No gameplay changes: adaptive render resolution (capped at 1.5x device pixels), 
 
 - **Blood:** splatters on floors and walls are now rarer on every map (first level, car park floors, party level), and noticeably rarer in big open spaces than in tight corridors and small rooms (the more of the surrounding 5x5 cells are open, the less likely one is accepted).
 - **Dark patches:** the unlit patches on the first level are rarer (17% of chunks, was 28%). The party level has them in 30% of chunks, and the car park now has bigger and more frequent unlit patches (60% of chunks, sometimes two).
+
+## Level menu
+
+While playing, type **r**, **g**, **b** one after another to open a teleport menu (First level / Car park / Party level / Close). Picking a level fades out and drops you at a random spot there (or beside the nearest living player on that level). Esc or Close dismisses it.
