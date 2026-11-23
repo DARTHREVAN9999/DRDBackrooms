@@ -141,4 +141,13 @@ No gameplay changes: adaptive render resolution (capped at 1.5x device pixels), 
 
 ## Level menu
 
-While playing, type **r**, **g**, **b** one after another to open a teleport menu (First level / Car park / Party level / Close). Picking a level fades out and drops you at a random spot there (or beside the nearest living player on that level). Esc or Close dismisses it.
+While playing, press **P** to open the password box, type **rgb** and press **Enter**. The password box closes and a teleport menu appears (First level / Car park / Party level / Nearest chair / Close). Picking a level fades out and drops you at a random spot there (or beside the nearest living player on that level). Esc or Close dismisses it.
+
+## Deploying on Render
+
+The project is a plain Node app (`npm install`, then `npm start`; it listens on `$PORT`). Either:
+
+- create the service with **Language: Node**, build command `npm install`, start command `npm start` (this is what `render.yaml` describes), or
+- leave the service on **Docker**: the included `Dockerfile` builds and runs the same server.
+
+`package.json`, `server.js` and the `public/` folder must be at the root of the GitHub repo (or set Render's **Root Directory** to the folder that contains them).

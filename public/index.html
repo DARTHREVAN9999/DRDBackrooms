@@ -1784,7 +1784,7 @@ function teleportToNearestChair(){
 secretForm.addEventListener('submit',e=>{
  e.preventDefault();
  if(secretInput.value.trim().toLowerCase()!=='rgb'){secretMessage.textContent='Incorrect password.';secretInput.value='';secretInput.focus();return;}
- if(teleportToNearestChair()){closeSecretPanel();renderer.domElement.requestPointerLock();}
+ closeSecretPanel();devMenuShow(true); // correct password: the password box goes away and the level menu appears
 });
 
 const MON_APP={root:null,state:'idle',x:0,z:0,yaw:0,ux:0,uz:0,peekX:0,peekZ:0,timer:0,nextAt:0,cooldownUntil:0};
@@ -3376,9 +3376,9 @@ function partySync(){
 
 // ---- level menu: press r, g, b in a row while playing ----
 const devMenuEl=document.createElement('div');devMenuEl.id='devMenu';
-devMenuEl.innerHTML='<div class="dmT">TELEPORT</div><button data-l="0">FIRST LEVEL</button><button data-l="1">CAR PARK</button><button data-l="2">PARTY LEVEL</button><button data-l="x" class="dmC">CLOSE</button>';
+devMenuEl.innerHTML='<div class="dmT">TELEPORT</div><button data-l="0">FIRST LEVEL</button><button data-l="1">CAR PARK</button><button data-l="2">PARTY LEVEL</button><button data-l="chair">NEAREST CHAIR</button><button data-l="x" class="dmC">CLOSE</button>';
 document.body.appendChild(devMenuEl);
-let devBuf='',devOpen=false;
+let devOpen=false;
 function devMenuShow(v){devOpen=v;devMenuEl.style.display=v?'flex':'none';if(v&&document.pointerLockElement)document.exitPointerLock()}
 function devTeleport(level){
  if(!gameStarted||dead)return;
@@ -3389,19 +3389,12 @@ function devTeleport(level){
 }
 devMenuEl.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b)return;
- const l=b.dataset.l;devMenuShow(false);devBuf='';
- if(l!=='x')devTeleport(+l);
+ const l=b.dataset.l;devMenuShow(false);
+ if(l==='chair'){if(!(LEVEL===0&&teleportToNearestChair()))toast('No chair found nearby')}
+ else if(l!=='x')devTeleport(+l);
  renderer.domElement.requestPointerLock();
 });
-addEventListener('keydown',e=>{
- if(!gameStarted||dead)return;
- if(devOpen){if(e.code==='Escape')devMenuShow(false);return}
- if(e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;
- const ch=e.key&&e.key.length===1?e.key.toLowerCase():'';
- if(!ch)return;
- devBuf=(devBuf+ch).slice(-3);
- if(devBuf==='rgb'){devBuf='';devMenuShow(true)}
-});
+addEventListener('keydown',e=>{if(devOpen&&e.code==='Escape'){e.preventDefault();devMenuShow(false)}});
 
 requestAnimationFrame(loop);
 
