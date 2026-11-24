@@ -143,6 +143,11 @@ No gameplay changes: adaptive render resolution (capped at 1.5x device pixels), 
 
 While playing, press **P** to open the password box, type **rgb** and press **Enter**. The password box closes and a teleport menu appears (First level / Car park / Party level / Nearest chair / Close). Picking a level fades out and drops you at a random spot there (or beside the nearest living player on that level). Esc or Close dismisses it.
 
+## Ramps for monsters, party level furniture and net areas
+
+- **Monsters use the ramps:** disguise monsters can now walk up and down the car-park ramps (their height follows the slope). If one is chasing you when you take a ramp to another floor, it turns up on the new floor a couple of seconds later. Ramps are also more common now (about 28% of chunks), and every ramp connects to the matching ramp on the floor above or below.
+- **Party level:** white folding tables with folding chairs, clusters of balloons floating near the ceiling (tied to the floor by a string), a few small ball pits, and the occasional **net area**: a blue padded play structure with heavy climbing nets on three sides, an upper deck with a netted bridge, a vertical net shaft, hanging ropes, coloured stepping pads and a ball pit underneath.
+
 ## Deploying on Render
 
 The project is a plain Node app (`npm install`, then `npm start`; it listens on `$PORT`). Either:

@@ -1167,14 +1167,12 @@ function isPit(x,z){
 function isFree(x,z,r){
  // Monsters treat pits as blocked so they path around them
  if(isPit(x,z)) return false;
- if(LEVEL===1&&rampAtCell(Math.floor(x/U),Math.floor(z/U)))return false; // monsters, props and spawns stay off the ramps
  return og(Math.floor(x/U),Math.floor(z/U))&&colsRect(x-r-1,z-r-1,x+r+1,z+r+1).every(b=>Math.hypot(x-Math.max(b[0],Math.min(x,b[1])),z-Math.max(b[2],Math.min(z,b[3])))>=r)
 }
 
 function findPath(sx,sz,gx,gz){
  const res=0.5,half=Math.min(60,Math.hypot(gx-sx,gz-sz)/2+14),N=Math.ceil(2*half/res),ox=(sx+gx)/2-half,oz=(sz+gz)/2-half;
  const bl=new Uint8Array(N*N),o=colsRect(ox,oz,ox+2*half,oz+2*half);
- if(LEVEL===1)for(const rr of rampRectsIn(ox,oz,ox+2*half,oz+2*half))o.push(rr);
  for(const b of o){
   const k0=Math.max(0,Math.ceil((b[0]-MR-ox)/res-.5)),k1=Math.min(N-1,Math.floor((b[1]+MR-ox)/res-.5));
   const l0=Math.max(0,Math.ceil((b[2]-MR-oz)/res-.5)),l1=Math.min(N-1,Math.floor((b[3]+MR-oz)/res-.5));
@@ -2210,7 +2208,7 @@ function partyMonsterTick(dt,dark){
   P.pendT-=dt;if(P.pendT>0||!P.root)return;
   const sp=findPartySpot(target);
   if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(target.x-P.x,target.z-P.z);P.spd=0;P.turn=0;
-   P.state='lurk';P.lurkT=3+Math.random()*3.2;P.seenT=0;P.last=[target.x,target.z];P.pp=[target.x,target.z];P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true}
+   P.state='lurk';P.lurkT=3+Math.random()*3.2;P.seenT=0;P.last=[target.x,target.z];P.pp=[target.x,target.z];P.root.position.set(P.x,rampGround(P.x,P.z),P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true}
   else{P.pendTry++;P.pendT=.5;if(P.pendTry>12)partyHide()}
   return;
  }
@@ -2222,7 +2220,7 @@ function partyMonsterTick(dt,dark){
   P.yaw+=Math.max(-1.5*dt,Math.min(1.5*dt,wrap(Math.atan2(target.x-P.x,target.z-P.z)-P.yaw)));
   P.seenT=(d<34&&mpTargetSeesSpot(P.x,P.z,target))?P.seenT+dt:Math.max(0,P.seenT-dt);
   if(P.lurkT<=0||P.seenT>.7){P.state='chase';P.chaseT=0;P.spd=3;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.2;P.last=[target.x,target.z];P.seenT=0}
-  P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,Math.sin(performance.now()*.0013)*.02);
+  P.root.position.set(P.x,rampGround(P.x,P.z),P.z);P.root.rotation.set(0,P.yaw,Math.sin(performance.now()*.0013)*.02);
   return;
  }
  if(d<1.2&&target.local){caught();return}
@@ -2381,7 +2379,7 @@ function bodyMonsterTick(dt,dark){
   const ambush=P.pendMode==='ambush',sp=(P.roomSpawn&&findRoomSpot(target))||findBodySpot(target);
   if(sp){P.x=sp.x;P.z=sp.z;P.path=sp.path||[];P.pi=1;P.gl=null;P.yaw=Math.atan2(target.x-P.x,target.z-P.z);P.spd=0;P.turn=0;
    P.seenT=0;P.lostT=0;P.farT=0;P.stepT=0;P.last=[target.x,target.z];P.pp=[target.x,target.z];P.pendMode='';
-   if(ambush){disgHide();P.state='chase';P.chaseT=0;P.root.visible=true;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.lunge=0;P.lungeCd=.35}
+   if(ambush){disgHide();P.state='chase';P.chaseT=0;P.root.visible=true;P.root.position.set(P.x,rampGround(P.x,P.z),P.z);P.root.rotation.set(0,P.yaw,0);P.lunge=0;P.lungeCd=.35}
    else{P.state='disguise';P.disT=8.0+Math.random()*1.5;P.root.visible=false;disgShow()}}
   else{P.pendTry++;P.pendT=.35;if(P.pendTry>10)bodyHide()}
   return;
@@ -2395,7 +2393,7 @@ function bodyMonsterTick(dt,dark){
   P.yaw+=Math.max(-1.8*dt,Math.min(1.8*dt,wrap(Math.atan2(target.x-P.x,target.z-P.z)-P.yaw)));
   P.seenT=(d<34&&mpTargetSeesSpot(P.x,P.z,target))?P.seenT+dt:Math.max(0,P.seenT-dt);
   if(P.lurkT<=0||P.seenT>.45){P.state='chase';P.chaseT=0;P.spd=3.2;P.rp=0;P.gl=null;P.lostT=0;P.farT=0;P.lunge=0;P.lungeCd=1.0;P.last=[target.x,target.z];P.seenT=0}
-  P.shake+=dt*2.8;P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,Math.sin(P.shake)*.06);
+  P.shake+=dt*2.8;P.root.position.set(P.x,rampGround(P.x,P.z),P.z);P.root.rotation.set(0,P.yaw,Math.sin(P.shake)*.06);
   return;
  }
  if(P.state==='leave'){
@@ -2404,7 +2402,7 @@ function bodyMonsterTick(dt,dark){
   if(P.leaveT<=0||(d>30&&!los(P.x,P.z,target.x,target.z))){bodyHide();return}
   bodySteer(dt,P.leaveGoal[0],P.leaveGoal[1],BODY_SPEED*.6,6);
   P.anim+=dt*(1+P.spd*1.15);P.shake+=dt*(1.6+P.spd*.35);
-  P.root.position.set(P.x,0,P.z);P.root.rotation.y=P.yaw;P.root.rotation.x+=(0-P.root.rotation.x)*Math.min(1,dt*8);P.root.rotation.z=0;
+  P.root.position.set(P.x,rampGround(P.x,P.z),P.z);P.root.rotation.y=P.yaw;P.root.rotation.x+=(0-P.root.rotation.x)*Math.min(1,dt*8);P.root.rotation.z=0;
   if(P.spd>.5){P.stepT-=dt*(P.spd*.45+.55);if(P.stepT<=0){P.stepT=1;monsterStepSnd(P.x,P.z,false)}}
   return;
  }
@@ -2432,7 +2430,7 @@ function bodyMonsterTick(dt,dark){
  if(Math.hypot(target.x-P.x,target.z-P.z)<1.25&&target.local){caught();return}
  P.anim+=dt*(1+P.spd*1.15);P.shake+=dt*(1.6+P.spd*.35);
  const run=Math.min(1,P.spd/6.2),sw=Math.sin(P.anim*1.85),lt=run*.22+(P.lunge>0?.4:0);
- P.root.position.set(P.x,Math.abs(sw)*.08*run,P.z);P.root.rotation.y=P.yaw;
+ P.root.position.set(P.x,Math.abs(sw)*.08*run+rampGround(P.x,P.z),P.z);P.root.rotation.y=P.yaw;
  P.root.rotation.x+=(lt-P.root.rotation.x)*Math.min(1,dt*8);
  P.root.rotation.z=sw*.11*run+Math.sin(P.shake)*.045*run+Math.max(-.22,Math.min(.22,-P.turn*.04));
  if(P.spd>.5){P.stepT-=dt*(P.spd*.45+.55);if(P.stepT<=0){P.stepT=1;monsterStepSnd(P.x,P.z,P.spd>4.2)}}
@@ -2642,7 +2640,7 @@ function hazSync(){
   const r=rng((Math.imul(cx,2246822519)^Math.imul(cz,3266489917)^(window._worldSeed|0)^0x6a09e1^(LEVEL?0x51f0a7:0))|0);
   if(!((cx%5)===0&&(cz%5)===0)&&r()>=(LEVEL?HZ_CHANCE_CAR:HZ_CHANCE)){HZ.done.add(k);continue}
   const D=chunkData(cx,cz),cells=[];
-  for(let i=0;i<N*N;i++)if(D.open[i]&&!D.pit[i]&&!D.wet[i])cells.push(i);
+  for(let i=0;i<N*N;i++)if(D.open[i]&&!D.pit[i]&&!D.wet[i]&&!(D.ramp&&D.ramp[i]))cells.push(i);
   let sp=null;
   for(let t=0;t<30&&cells.length&&!sp;t++){
    const i=cells[Math.floor(r()*cells.length)],x=(cx*N+i%N+.5)*U,z=(cz*N+((i/N)|0)+.5)*U;
@@ -2871,7 +2869,7 @@ function switchLevel(n,floor){
  if(n===2)P2.t=25+Math.random()*25;
  pl.gy=0;
  let placed=false;
- for(let t=0;t<200&&!placed;t++){const x=(Math.random()-.5)*1200,z=(Math.random()-.5)*1200;if(isFree(x,z,1.2)){pl.x=x;pl.z=z;placed=true}}
+ for(let t=0;t<200&&!placed;t++){const x=(Math.random()-.5)*1200,z=(Math.random()-.5)*1200;if(isFree(x,z,1.2)&&!(n===1&&rampAtCell(Math.floor(x/U),Math.floor(z/U)))){pl.x=x;pl.z=z;placed=true}}
  if(!placed){pl.x=33;pl.z=33}
  pl.yaw=Math.random()*Math.PI*2;pl.pitch=0;
  camera.position.set(pl.x,1.8,pl.z);camera.rotation.set(0,pl.yaw,0);
@@ -3190,7 +3188,7 @@ function lvDecode(v){v|=0;return v>=11?{level:1,floor:Math.floor(v/10)}:{level:v
 // ---- ramps between car-park floors ----
 function rampPlan(cx,cz,f){
  const h=(Math.imul(cx,2654435761)^Math.imul(cz,40503)^Math.imul(f,374761393)^(window._worldSeed|0)^0x51ed270b)>>>0;
- if((h%1000)>=170)return null;
+ if((h%1000)>=280)return null; // about 28% of chunks have a ramp
  const dir=(h>>10)&3,ax=dir<2?'z':'x',Wd=4,Ln=10,fa=Ln+2,fcw=Wd+2,fx=ax==='z'?fcw:fa,fz=ax==='z'?fa:fcw;
  return{dir,ax,Wd,Ln,fa,fcw,fx,fz,bx:3+((h>>>12)%(N-fx-6)),bz:3+((h>>>17)%(N-fz-6))};
 }
@@ -3207,15 +3205,17 @@ function rampRectsIn(x0,z0,x1,z1){
 function switchFloor(delta){
  const nf=CAR_FLOOR+delta;if(nf<1||LEVEL!==1)return;
  tpFadeEl.style.transition='none';tpFadeEl.style.opacity='1';void tpFadeEl.offsetWidth;
+ const follow=BODY.state==='chase'&&BODY.d<24; // a chasing monster comes up/down the ramp after you
  leaveLevelCleanup();
  CAR_FLOOR=nf;resetWorldStreaming();
  updateChunks(pl.x,pl.z,true);
- pl.gy=rampGround(pl.x,pl.z);CAR.floorCool=1.2;
+ pl.gy=rampGround(pl.x,pl.z);CAR.floorCool=1.2;if(follow)CAR.followT=2.4;
  setTimeout(()=>{tpFadeEl.style.transition='opacity .5s';tpFadeEl.style.opacity='0'},60);
 }
 function rampTick(dt){
  if(LEVEL!==1||dead||!gameStarted){pl.gy=0;return}
  CAR.floorCool=Math.max(0,(CAR.floorCool||0)-dt);
+ if(CAR.followT>0){CAR.followT-=dt;if(CAR.followT<=0&&BODY.state==='idle'&&!MP.bodyNetOwned)startCarEncounter({ambush:true})}
  const gy=rampGround(pl.x,pl.z);pl.gy=(pl.gy||0)+(gy-(pl.gy||0))*Math.min(1,dt*12);
  if(CAR.floorCool>0)return;
  const r=rampAtCell(Math.floor(pl.x/U),Math.floor(pl.z/U));if(!r)return;
@@ -3252,7 +3252,7 @@ void main(){
 function spawnGlitchSpot(){
  for(let t=0;t<60;t++){
   const a=Math.random()*6.283,r=10+Math.random()*16,x=pl.x+Math.sin(a)*r,z=pl.z+Math.cos(a)*r;
-  if(!og(Math.floor(x/U),Math.floor(z/U))||!isFree(x,z,1.3)||carRoomAt(x,z))continue;
+  if(!og(Math.floor(x/U),Math.floor(z/U))||!isFree(x,z,1.3)||carRoomAt(x,z)||rampAtCell(Math.floor(x/U),Math.floor(z/U)))continue;
   let near=false;for(const s of GL.spots)if(Math.hypot(s.x-x,s.z-z)<8){near=true;break}
   if(near||partyView(x,z,.1))continue;
   const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),glitchMat);m.rotation.x=-Math.PI/2;m.scale.set(2.8,2.8,1);m.position.set(x,.03,z);m.renderOrder=3;scene.add(m);
@@ -3346,6 +3346,7 @@ function partyBuildChunk(key){
   cols.push([spot.x-spot.w-.05,spot.x+spot.w+.05,spot.z-spot.d-.05,spot.z+spot.d+.05]);
   if(r()<.3)bottles.push({itemKey:'L2:party:'+key+':'+t+':almond',wx:spot.x+(spot.vert?0:.7),wz:spot.z+(spot.vert?.7:0)});
  }
+ partyExtras(cx,cz,D,r,src,cols,cells,placed);
  entry.group.add(bakeMerged(src));src.traverse(o=>{if(o.geometry)o.geometry.dispose()});
  for(const b of bottles){
   if(FURN.picked.has(b.itemKey))continue;
@@ -3395,6 +3396,117 @@ devMenuEl.addEventListener('click',e=>{
  renderer.domElement.requestPointerLock();
 });
 addEventListener('keydown',e=>{if(devOpen&&e.code==='Escape'){e.preventDefault();devMenuShow(false)}});
+
+
+// ===== PARTY LEVEL EXTRAS: folding tables, balloon clusters, ball pits, net play areas =====
+const netTex=tex(64,64,(g,w,h)=>{g.strokeStyle='#0a0e1e';g.lineWidth=5;g.strokeRect(1,1,w-2,h-2)},1,1);
+const PM2={
+ net:new THREE.MeshStandardMaterial({map:netTex,transparent:true,alphaTest:.4,side:THREE.DoubleSide,roughness:.9}),
+ ball:new THREE.MeshStandardMaterial({map:ballTex,roughness:.5,emissive:0x1c1c1c}),
+ blue:new THREE.MeshStandardMaterial({color:0x2e78e6,roughness:.55}),
+ deck:new THREE.MeshStandardMaterial({color:0xe8c43a,roughness:.7}),
+ red:new THREE.MeshStandardMaterial({color:0xd7322d,roughness:.6}),
+ green:new THREE.MeshStandardMaterial({color:0x4cc23c,roughness:.6}),
+ yellow:new THREE.MeshStandardMaterial({color:0xf2cf2a,roughness:.6}),
+ white:new THREE.MeshStandardMaterial({color:0xf1f1ee,roughness:.7}),
+ grey:new THREE.MeshStandardMaterial({color:0x8b8f94,roughness:.45,metalness:.5}),
+ dark:new THREE.MeshStandardMaterial({color:0x1d1f26,roughness:.8}),
+ bal:[0xd7322d,0xd7322d,0xf26b21,0xf2cf2a,0xe85aa8,0x3a8bf0,0x47c156].map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.25,metalness:.05}))
+};
+function scaledPlane(w,h,per){const g=new THREE.PlaneGeometry(w,h),uv=g.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*w/per,uv.getY(i)*h/per);return g}
+function netGeo(w,h){return scaledPlane(w,h,.35)}
+function pMesh(par,geo,mat,x,y,z,rx,ry){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);if(rx)m.rotation.x=rx;if(ry)m.rotation.y=ry;par.add(m);return m}
+function pCyl(par,r,h,x,y,z,mat){return pMesh(par,new THREE.CylinderGeometry(r,r,h,10),mat,x,y,z)}
+function partyExtras(cx,cz,D,r,src,cols,cells,placed){
+ const ri=(a,b)=>a+Math.floor(r()*(b-a+1));
+ const spot=rad=>{
+  for(let tr=0;tr<30;tr++){
+   const i=cells[Math.floor(r()*cells.length)],x=(cx*N+i%N+.5)*U+(r()-.5)*.8,z=(cz*N+((i/N)|0)+.5)*U+(r()-.5)*.8;
+   if(!isFree(x,z,rad))continue;
+   if(placed.some(q=>Math.abs(q[0]-x)<2.6&&Math.abs(q[1]-z)<2.6))continue;
+   placed.push([x,z]);return{x,z};
+  }
+  return null;
+ };
+ if(!cells.length)return;
+ // white folding tables with folding chairs
+ if(r()<.5){
+  const p=spot(1.7);
+  if(p){
+   const yaw=r()<.5?0:Math.PI/2,c=Math.cos(yaw),sn=Math.sin(yaw),pg=new THREE.Group();pg.position.set(p.x,0,p.z);pg.rotation.y=yaw;src.add(pg);
+   carBox(pg,1.6,.04,.8,0,.74,0,PM2.white);
+   for(const [lx,lz] of [[-.72,-.34],[.72,-.34],[-.72,.34],[.72,.34]])carBox(pg,.04,.72,.04,lx,.36,lz,PM2.grey);
+   const wc=(lx,lz)=>[p.x+lx*c+lz*sn,p.z-lx*sn+lz*c];
+   const hw=yaw?.45:.85,hd=yaw?.85:.45;
+   cols.push([p.x-hw,p.x+hw,p.z-hd,p.z+hd]);
+   const spots=[[-.45,.78,0],[.45,.78,0],[-.45,-.78,Math.PI],[.45,-.78,Math.PI]].sort(()=>r()-.5).slice(0,ri(2,4));
+   for(const [lx,lz,ry] of spots){
+    const cg=new THREE.Group();cg.position.set(lx,0,lz);cg.rotation.y=ry;pg.add(cg);
+    carBox(cg,.42,.04,.42,0,.46,0,PM2.grey);carBox(cg,.42,.4,.04,0,.68,.2,PM2.grey);
+    for(const [ax,az] of [[-.18,-.18],[.18,-.18],[-.18,.18],[.18,.18]])carBox(cg,.03,.44,.03,ax,.22,az,PM2.grey);
+    const [wx,wz]=wc(lx,lz);cols.push([wx-.22,wx+.22,wz-.22,wz+.22]);
+   }
+  }
+ }
+ // clusters of balloons floating near the ceiling, tied down by a string
+ for(let n=r()<.6?(r()<.4?2:1):0;n>0;n--){
+  const p=spot(.5);if(!p)continue;
+  const pg=new THREE.Group();pg.position.set(p.x,0,p.z);src.add(pg);
+  const y0=2.2+r()*.55;
+  for(let b=0,nb=ri(5,9);b<nb;b++){
+   const m=PM2.bal[Math.floor(r()*PM2.bal.length)],bx=(r()-.5)*.55,by=y0+(r()-.5)*.4,bz=(r()-.5)*.55;
+   const sp=new THREE.Mesh(new THREE.SphereGeometry(.2,10,8),m);sp.position.set(bx,by,bz);sp.scale.set(1,1.15,1);pg.add(sp);
+  }
+  pCyl(pg,.006,y0-.1,0,(y0-.1)/2,0,PM2.dark);carBox(pg,.12,.08,.12,0,.04,0,PM2.dark);
+ }
+ // a small ball pit
+ if(r()<.15){
+  const p=spot(2.0);
+  if(p){
+   const pg=new THREE.Group();pg.position.set(p.x,0,p.z);pg.rotation.y=r()*6.283;src.add(pg);
+   pMesh(pg,scaledPlane(3.4,3.4,1.4),PM2.ball,0,.33,0,-Math.PI/2);
+   carBox(pg,3.4,.5,.3,0,.25,-1.7,PM2.blue);carBox(pg,.3,.5,3.4,-1.7,.25,0,PM2.blue);carBox(pg,.3,.5,3.4,1.7,.25,0,PM2.blue);
+   carBox(pg,1.0,.5,.3,-1.2,.25,1.7,PM2.blue);carBox(pg,1.0,.5,.3,1.2,.25,1.7,PM2.blue);
+   for(let b=0;b<7;b++){const sp=new THREE.Mesh(new THREE.SphereGeometry(.13,8,6),PM2.bal[b%PM2.bal.length]);sp.position.set((r()-.5)*5,.13,(r()-.5)*5);if(Math.abs(sp.position.x)<1.9&&Math.abs(sp.position.z)<1.9)sp.position.y=.4;pg.add(sp)}
+  }
+ }
+ // net play area: climbing nets, a netted bridge, a vertical net shaft, a ball pit and stepping pads (needs a free 4x4-cell block)
+ if(r()<.14){
+  let found=null;
+  for(let t=0;t<14&&!found;t++){
+   const ix=ri(1,N-6),iz=ri(1,N-6);let ok=true,minH=99;
+   for(let dz=0;dz<4&&ok;dz++)for(let dx=0;dx<4;dx++){const k=(iz+dz)*N+ix+dx;if(!D.open[k]||(D.bp&&D.bp[k])){ok=false;break}minH=Math.min(minH,D.hg[k])}
+   if(!ok||minH<3.3)continue;
+   const x=(cx*N+ix+2)*U,z=(cz*N+iz+2)*U;
+   if(placed.some(q=>Math.abs(q[0]-x)<5.5&&Math.abs(q[1]-z)<5.5))continue;
+   found={x,z};
+  }
+  if(found){
+   const {x,z}=found;placed.push([x,z]);
+   const pg=new THREE.Group();pg.position.set(x,0,z);src.add(pg);
+   pMesh(pg,scaledPlane(6.6,6.6,1.4),PM2.ball,0,.33,0,-Math.PI/2);
+   carBox(pg,6.8,.5,.35,0,.25,-3.4,PM2.blue);carBox(pg,.35,.5,6.8,-3.4,.25,0,PM2.blue);carBox(pg,.35,.5,6.8,3.4,.25,0,PM2.blue);
+   carBox(pg,2.2,.5,.35,-2.3,.25,3.4,PM2.blue);carBox(pg,2.2,.5,.35,2.3,.25,3.4,PM2.blue);
+   const poles=[[-3.4,-3.4],[3.4,-3.4],[-3.4,3.4],[3.4,3.4],[-3.4,0],[3.4,0]];
+   for(const [px,pz] of poles){pCyl(pg,.11,3.0,px,1.5,pz,PM2.blue);cols.push([x+px-.16,x+px+.16,z+pz-.16,z+pz+.16])}
+   for(const yy of [1.1,2.5]){carBox(pg,6.8,.14,.14,0,yy,-3.4,PM2.blue);carBox(pg,.14,.14,6.8,-3.4,yy,0,PM2.blue);carBox(pg,.14,.14,6.8,3.4,yy,0,PM2.blue)}
+   pMesh(pg,netGeo(6.8,1.4),PM2.net,0,1.8,-3.4);
+   pMesh(pg,netGeo(6.8,1.4),PM2.net,-3.4,1.8,0,0,Math.PI/2);pMesh(pg,netGeo(6.8,1.4),PM2.net,3.4,1.8,0,0,Math.PI/2);
+   cols.push([x-3.45,x+3.45,z-3.52,z-3.28],[x-3.52,x-3.28,z-3.45,z+3.45],[x+3.28,x+3.52,z-3.45,z+3.45]);
+   // upper tier deck with a netted bridge across to the other side
+   carBox(pg,3.3,.14,3.3,-1.75,2.55,-1.75,PM2.deck);
+   pMesh(pg,netGeo(3.4,1.2),PM2.net,1.6,2.5,-1.8,-Math.PI/2);
+   carBox(pg,3.4,.06,.06,1.6,2.95,-1.2,PM2.blue);carBox(pg,3.4,.06,.06,1.6,2.95,-2.4,PM2.blue);
+   // vertical net shaft
+   for(const [nx,nz,ry] of [[2.4,1.9,0],[2.4,2.9,0],[1.9,2.4,Math.PI/2],[2.9,2.4,Math.PI/2]])pMesh(pg,netGeo(1.0,3.0),PM2.net,nx,1.5,nz,0,ry);
+   for(const [px,pz] of [[1.9,1.9],[2.9,1.9],[1.9,2.9],[2.9,2.9]])pCyl(pg,.06,3.0,px,1.5,pz,PM2.blue);
+   cols.push([x+1.85,x+2.95,z+1.85,z+2.95]);
+   // stepping pads in the ball pit and hanging climbing ropes
+   for(const [sx,sz,m] of [[-1.8,1.6,PM2.red],[.2,2.4,PM2.green],[-.3,.5,PM2.yellow]]){pCyl(pg,.07,.7,sx,.35,sz,PM2.grey);pCyl(pg,.38,.22,sx,.8,sz,m)}
+   for(const [rx,rz] of [[-.8,-.6],[.6,-.2],[1.2,-1.4]])pCyl(pg,.025,1.3,rx,1.85,rz,PM2.dark);
+  }
+ }
+}
 
 requestAnimationFrame(loop);
 
@@ -3595,11 +3707,11 @@ function mpRemoteBodyTick(dt){
  if(d.state==='disguise'){
   if(!MP.remoteBodyAvatar)MP.remoteBodyAvatar=mkAv();
   if(MP.remoteBodyRoot)MP.remoteBodyRoot.visible=false;
-  if(MP.remoteBodyAvatar){const av=MP.remoteBodyAvatar;av.root.visible=true;av.root.position.set(d.x,0,d.z);av.root.rotation.set(0,d.yaw,0);av.root.scale.set(1,1,1);avAnim(av,dt,d.spd>.6,false)}
+  if(MP.remoteBodyAvatar){const av=MP.remoteBodyAvatar;av.root.visible=true;av.root.position.set(d.x,rampGround(d.x,d.z),d.z);av.root.rotation.set(0,d.yaw,0);av.root.scale.set(1,1,1);avAnim(av,dt,d.spd>.6,false)}
  }else{
   if(MP.remoteBodyAvatar)MP.remoteBodyAvatar.root.visible=false;
   if(!MP.remoteBodyRoot)mpCreateRemoteBodyRoot();
-  if(MP.remoteBodyRoot){const r=MP.remoteBodyRoot;r.visible=true;r.position.set(d.x,0,d.z);r.rotation.set(d.rx,d.yaw,d.rz)}
+  if(MP.remoteBodyRoot){const r=MP.remoteBodyRoot;r.visible=true;r.position.set(d.x,rampGround(d.x,d.z),d.z);r.rotation.set(d.rx,d.yaw,d.rz)}
   if(d.state==='chase'&&MP.remoteBodyRoot&&MP.remoteBodyRoot.visible&&!dead&&Math.hypot(pl.x-d.x,pl.z-d.z)<1.25){caught();return}
  }
 }
@@ -3780,7 +3892,7 @@ function disgTick(dt){const P=BODY;
  if(P.disT<=0){
   disgHide();P.state='chase';P.chaseT=0;P.spd=0;P.shake=0;P.seenT=0;P.lostT=0;P.farT=0;
   P.last=[target.x,target.z];P.pp=[target.x,target.z];P.gl=null;P.path=[];P.rp=0;P.lunge=0;P.lungeCd=.6;
-  P.root.position.set(P.x,0,P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return;
+  P.root.position.set(P.x,rampGround(P.x,P.z),P.z);P.root.rotation.set(0,P.yaw,0);P.root.visible=true;return;
  }
  const trailGap=2.65;
  const tx=target.x+Math.sin(target.yaw)*trailGap,tz=target.z+Math.cos(target.yaw)*trailGap;
@@ -3793,7 +3905,7 @@ function disgTick(dt){const P=BODY;
  }
  const mv=P.spd>.6;
  if(P.root)P.root.visible=false;
- MP.hz.root.visible=true;MP.hz.root.position.set(P.x,0,P.z);MP.hz.root.rotation.set(0,P.yaw,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false);
+ MP.hz.root.visible=true;MP.hz.root.position.set(P.x,rampGround(P.x,P.z),P.z);MP.hz.root.rotation.set(0,P.yaw,0);MP.hz.root.scale.set(1,1,1);avAnim(MP.hz,dt,mv,false);
  if(mv&&A_()){P.stepT-=dt;if(P.stepT<=0){P.stepT=.52;playerStepSnd(P.x,P.z,false)}}
 }
 
